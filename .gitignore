@@ -1,0 +1,11 @@
+build/
+*.o
+*.elf
+*.bin
+*.hex
+*.map
+*.d
+__pycache__/
+*.pyc
+.claude/
+.claude-task-*

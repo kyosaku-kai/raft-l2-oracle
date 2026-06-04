@@ -1,0 +1,3 @@
+[submodule "firmware/vendor/raft"]
+	path = firmware/vendor/raft
+	url = https://github.com/timblaktu/raft.git
