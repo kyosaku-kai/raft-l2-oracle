@@ -30,9 +30,10 @@ typedef struct __attribute__((packed)) {
     uint8_t  box_id;
     uint32_t term;
     uint16_t payload_len;
+    uint16_t ethertype;     /* propagate EtherType for health/heartbeat demux */
 } sim_header_t;
 
-_Static_assert(sizeof(sim_header_t) == 10, "sim header must be 10 bytes");
+_Static_assert(sizeof(sim_header_t) == 12, "sim header must be 12 bytes");
 
 typedef struct {
     int       sock_fd;
@@ -51,7 +52,6 @@ static uint64_t sim_now_ms(raft_transport_t *t)
 static int sim_send(raft_transport_t *t, uint8_t dst_node, uint16_t ethertype,
                     raft_msg_type_t type, const void *payload, size_t len)
 {
-    (void)ethertype; /* not needed for UDP addressing */
     sim_transport_data_t *sd = (sim_transport_data_t *)t->impl_data;
 
     uint8_t buf[sizeof(sim_header_t) + ORACLE_MAX_PAYLOAD_V1];
@@ -66,6 +66,7 @@ static int sim_send(raft_transport_t *t, uint8_t dst_node, uint16_t ethertype,
     hdr->box_id = sd->box_id;
     hdr->term = 0; /* term is set by caller in the payload, not the sim header */
     hdr->payload_len = (uint16_t)len;
+    hdr->ethertype = ethertype;
 
     if (len > 0)
         memcpy(buf + sizeof(sim_header_t), payload, len);
@@ -105,7 +106,7 @@ static int sim_recv(raft_transport_t *t, uint16_t *ethertype,
 
     *type = (raft_msg_type_t)hdr->msg_type;
     *src_node = hdr->node_id;
-    *ethertype = ETHERTYPE_RAFT; /* sim only handles raft messages */
+    *ethertype = hdr->ethertype;
 
     size_t payload_len = hdr->payload_len;
     if (payload_len > max_len)

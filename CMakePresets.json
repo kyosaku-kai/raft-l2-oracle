@@ -1,0 +1,50 @@
+{
+    "version": 6,
+    "configurePresets": [
+        {
+            "name": "firmware",
+            "displayName": "STM32F207 Firmware",
+            "description": "Cross-compile for Cortex-M3 via arm-none-eabi-gcc",
+            "binaryDir": "${sourceDir}/build/firmware",
+            "generator": "Ninja",
+            "toolchainFile": "${sourceDir}/cmake/arm-none-eabi-gcc.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "firmware-release",
+            "displayName": "STM32F207 Firmware (Release)",
+            "inherits": "firmware",
+            "binaryDir": "${sourceDir}/build/firmware-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "sim",
+            "displayName": "POSIX Simulator",
+            "description": "Native host build for POSIX simulator",
+            "binaryDir": "${sourceDir}/build/sim",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "firmware",
+            "configurePreset": "firmware"
+        },
+        {
+            "name": "firmware-release",
+            "configurePreset": "firmware-release"
+        },
+        {
+            "name": "sim",
+            "configurePreset": "sim"
+        }
+    ]
+}

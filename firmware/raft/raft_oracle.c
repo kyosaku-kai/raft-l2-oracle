@@ -9,10 +9,12 @@
 #include "raft_oracle.h"
 #include "../protocol/wire_format.h"
 #include "../transport/transport.h"
+#include "../health/health_monitor.h"
 
-#include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+
+#include "raft_private.h"  /* __raft_malloc, __raft_free */
 
 /* --- Raft Callback Implementations --- */
 
@@ -105,11 +107,21 @@ static int cb_applylog(raft_server_t *raft, void *udata,
                        raft_entry_t *entry, raft_index_t idx)
 {
     (void)raft;
-    (void)udata;
     (void)idx;
+    oracle_node_ctx_t *ctx = (oracle_node_ctx_t *)udata;
 
-    if (entry->type == RAFT_LOGTYPE_NORMAL && entry->data.buf) {
-        /* This is where we'd update the health table */
+    if (entry->type == RAFT_LOGTYPE_NORMAL && entry->data.buf &&
+        entry->data.len >= sizeof(payload_health_update_t))
+    {
+        const payload_health_update_t *ht =
+            (const payload_health_update_t *)entry->data.buf;
+
+        if (ctx->health_ctx) {
+            health_table_apply((health_monitor_t *)ctx->health_ctx,
+                               ht->target_node_id, ht->target_box_id,
+                               ht->old_status, ht->new_status,
+                               ht->term);
+        }
     }
     return 0;
 }
@@ -121,9 +133,10 @@ static int cb_log_offer(raft_server_t *raft, void *udata,
     (void)udata;
     (void)idx;
 
-    /* Deep-copy entry data so it persists after the message buffer is freed */
+    /* Deep-copy entry data so it persists after the message buffer is freed.
+     * Uses the pluggable allocator so bare-metal routes through pvPortMalloc. */
     if (entry->data.buf && entry->data.len > 0) {
-        void *copy = malloc(entry->data.len);
+        void *copy = __raft_malloc(entry->data.len);
         if (!copy) return -1;
         memcpy(copy, entry->data.buf, entry->data.len);
         entry->data.buf = copy;
@@ -138,7 +151,7 @@ static int cb_log_pop(raft_server_t *raft, void *udata,
     (void)udata;
     (void)idx;
     if (entry->data.buf) {
-        free(entry->data.buf);
+        __raft_free(entry->data.buf);
         entry->data.buf = NULL;
     }
     return 0;
@@ -224,6 +237,43 @@ int oracle_add_node(oracle_node_ctx_t *ctx, uint8_t peer_id, int is_self)
 int oracle_is_leader(oracle_node_ctx_t *ctx)
 {
     return raft_is_leader(ctx->raft);
+}
+
+int oracle_tick(oracle_node_ctx_t *ctx, int elapsed_ms)
+{
+    return raft_periodic(ctx->raft, elapsed_ms);
+}
+
+int oracle_propose_health_transition(oracle_node_ctx_t *ctx,
+                                     uint8_t target_node, uint8_t target_box,
+                                     uint8_t old_status, uint8_t new_status)
+{
+    if (!raft_is_leader(ctx->raft))
+        return -1; /* RAFT_ERR_NOT_LEADER */
+
+    payload_health_update_t ht;
+    memset(&ht, 0, sizeof(ht));
+    ht.target_node_id = target_node;
+    ht.target_box_id = target_box;
+    ht.old_status = old_status;
+    ht.new_status = new_status;
+    ht.term = (uint32_t)raft_get_current_term(ctx->raft);
+    ht.timestamp_ms = (uint32_t)ctx->transport->now_ms(ctx->transport);
+
+    raft_entry_t entry;
+    memset(&entry, 0, sizeof(entry));
+    entry.term = raft_get_current_term(ctx->raft);
+    entry.id = ctx->next_entry_id++;
+    entry.type = RAFT_LOGTYPE_NORMAL;
+    entry.data.buf = &ht;
+    entry.data.len = sizeof(ht);
+
+    msg_entry_response_t response;
+    int e = raft_recv_entry(ctx->raft, &entry, &response);
+    if (e != 0) {
+        printf("raft: propose health transition failed: %d\r\n", e);
+    }
+    return e;
 }
 
 void oracle_destroy(oracle_node_ctx_t *ctx)
@@ -329,7 +379,12 @@ int oracle_dispatch_raft_message(oracle_node_ctx_t *ctx,
         rp.success = (uint32_t)resp.success;
         rp.current_idx = (uint32_t)resp.current_idx;
         rp.first_idx = (uint32_t)resp.first_idx;
-        rp.n_observations = 0; /* TODO: piggyback health observations */
+        rp.n_observations = 0;
+        if (ctx->health_ctx) {
+            health_monitor_get_observations(
+                (health_monitor_t *)ctx->health_ctx,
+                rp.obs, &rp.n_observations);
+        }
 
         ctx->transport->send(ctx->transport, src_node_id,
                              ETHERTYPE_RAFT, MSG_APPEND_ENTRIES_RESP,
@@ -341,6 +396,16 @@ int oracle_dispatch_raft_message(oracle_node_ctx_t *ctx,
         if (len < 12) return -1; /* at least the 3 standard fields */
         const payload_append_entries_resp_t *p =
             (const payload_append_entries_resp_t *)payload;
+
+        /* Leader-side: process follower health observations */
+        if (ctx->health_ctx && p->n_observations > 0 &&
+            len >= sizeof(payload_append_entries_resp_t))
+        {
+            health_monitor_update_corroboration(
+                (health_monitor_t *)ctx->health_ctx,
+                src_node_id, p->obs, p->n_observations,
+                (uint32_t)ctx->transport->now_ms(ctx->transport));
+        }
 
         msg_appendentries_response_t resp;
         resp.term = raft_get_current_term(ctx->raft);

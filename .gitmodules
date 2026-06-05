@@ -1,3 +1,6 @@
 [submodule "firmware/vendor/raft"]
 	path = firmware/vendor/raft
 	url = https://github.com/timblaktu/raft.git
+[submodule "firmware/vendor/freertos"]
+	path = firmware/vendor/freertos
+	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git

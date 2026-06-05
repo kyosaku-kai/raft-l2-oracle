@@ -11,7 +11,7 @@ L2 failure detection oracle using Raft consensus on STM32 Nucleo-F207ZG (Cortex-
 
 ## Design Doc
 
-Full specification: `~/src/k3s-ha/raft-stm32-l2-design.md` (v0.5)
+Full specification: `docs/design.md` (v0.5)
 
 ## Key Technical Details
 

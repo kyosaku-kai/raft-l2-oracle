@@ -5,7 +5,9 @@ build/
 *.hex
 *.map
 *.d
+compile_commands.json
 __pycache__/
 *.pyc
-.claude/
+.claude/*
+!.claude/user-plans/
 .claude-task-*

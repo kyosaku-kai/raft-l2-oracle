@@ -1,47 +1,22 @@
 # raft-l2-oracle
 
-Consensus-backed failure detection for IFE high-availability clusters, running on physically isolated microcontrollers.
+Consensus-backed failure detection for distributed edge clusters, running on physically isolated microcontrollers.
 
 ## The problem
 
-In a distributed IFE system, each box contains compute nodes (Jetson, x86) running k3s with etcd. When a node crashes or a box loses power, k3s takes 40+ seconds to detect the failure and cannot automatically restore etcd quorum. The current software-based failure detection (Chassis Manager, Node Manager) runs on the same processors it monitors - when a Jetson kernel panics, its failure monitor dies with it.
+In a distributed edge cluster, each enclosure contains compute nodes running k3s with etcd. When a node crashes or loses power, k3s takes 40+ seconds to detect the failure and cannot automatically restore etcd quorum. Software-based failure detection running on the same processors it monitors shares their failure domain - when a node kernel panics, its failure monitor dies with it.
 
 ## The idea
 
-Each box in the IFE system contains an AC5P switching ASIC with an embedded Cortex-M3 service processor. This CM3 is on independent silicon from the compute nodes it monitors - separate voltage rail, separate firmware, separate failure domain. It survives Jetson crashes, OOM kills, kernel panics, and module-level hardware faults. It also sits directly on the L2 switch fabric with sub-microsecond frame visibility.
+Many switching ASICs contain an embedded Cortex-M3 service processor. This service processor is on independent silicon from the compute nodes it monitors - separate voltage rail, separate firmware, separate failure domain. It survives compute node crashes, OOM kills, kernel panics, and module-level hardware faults. It also sits directly on the L2 switch fabric with sub-microsecond frame visibility.
 
-This project puts that idle CM3 to work: run a lightweight Raft consensus algorithm across the CM3s, have each CM3 monitor its local compute nodes via L2 heartbeats, and reach cluster-wide agreement on which nodes are alive or dead. The result is consensus-backed failure detection in under 100ms, with automatic etcd quorum restoration in under 2 seconds.
+This project puts that idle service processor to work: run a lightweight Raft consensus algorithm across the embedded processors, have each one monitor its local compute nodes via L2 heartbeats, and reach cluster-wide agreement on which nodes are alive or dead. The result is consensus-backed failure detection in under 100ms, with automatic etcd quorum restoration in under 2 seconds.
 
 ## Architecture
 
-The system has three tiers:
+![System Architecture](docs/diagrams/system-architecture.drawio.svg)
 
-```
-                    +-----------+
-                    |  k3s/etcd |  (unchanged - receives fencing commands)
-                    +-----+-----+
-                          |
-                    +-----+-----+
-                    |oracle-agent|  Tier 2: Linux daemon on each compute node
-                    +-----+-----+  Sends heartbeats, executes fencing actions
-                          |
-                   0x88B7 | 0x88B6
-                  (hbeat) | (health)
-                          |
-                    +-----+-----+
-                    |   STM32   |  Tier 1: L2 Oracle (this project)
-                    | Raft node |  Monitors local nodes, votes on failures
-                    +-----+-----+
-                          |
-                   0x88B5 | (Raft)
-                          |
-              +-----------+-----------+
-              |                       |
-        +-----+-----+          +-----+-----+
-        |   STM32   |          |   STM32   |
-        | Raft node |          | Raft node |
-        +-----------+          +-----------+
-```
+The system has three tiers:
 
 **Tier 1 - L2 Oracle (this repo):** 3-4 STM32 microcontrollers running Raft consensus over raw L2 Ethernet. Each monitors its local compute nodes via 10ms heartbeats and proposes state transitions (UP -> SUSPECT -> DOWN) to the Raft leader. All STM32s maintain an identical, consensus-backed health state table.
 
@@ -65,62 +40,95 @@ Frames use a 24-byte header (14-byte Ethernet II + 10-byte oracle protocol heade
 
 A single node crash is detected and fenced in under 200ms:
 
-```
-t=0ms     x86-2 crashes. Heartbeats (0x88B7) stop arriving at local STM32-2.
-t=30ms    STM32-2 sees 3 missed heartbeats, marks x86-2 SUSPECT.
-t=40ms    Raft leader commits SUSPECT. oracle-agent runs: kubectl cordon x86-2
-t=80ms    No recovery. STM32-2 escalates to DOWN.
-t=90ms    Raft leader commits DOWN. oracle-agent cross-checks etcd.
-t=120ms   oracle-agent runs: etcdctl member remove x86-2
-          etcd quorum restored.
-```
+![Failure Detection Timeline](docs/diagrams/failure-detection.drawio.svg)
 
 For full-box power loss, multi-observer corroboration prevents false positives from asymmetric link failures: at least two STM32s must independently agree a node is down before fencing proceeds.
 
 ## What exists today
 
-This repo implements the **POSIX simulator** (design doc milestone v0.7). The simulator runs the same oracle integration code that will run on STM32 firmware, but with UDP loopback instead of raw Ethernet and pthreads instead of FreeRTOS tasks.
+The firmware (design doc milestones v0.7 and v0.8-in-progress) includes a working POSIX simulator and a complete STM32 firmware ready for hardware verification. The simulator and firmware share the same oracle integration code - only the transport and OS layers differ.
 
-**What works:**
+**Firmware (STM32 target):**
+- CMake cross-compilation with arm-none-eabi toolchain and presets (`cmake --preset firmware`)
+- STM32F2xx HAL + CMSIS startup code (120MHz clock, GPIO, UART, Ethernet MAC)
+- FreeRTOS V11.3.0 with heap_4, TIM6 HAL timebase, 72KB heap pool
+- STM32 Ethernet transport backend with DMA, LAN8742A PHY initialization (`firmware/transport/transport_eth.c`)
+- Raft library adapted for bare-metal: custom heap via `raft_set_heap_functions()`, pre-allocated 1500-entry log
+- FreeRTOS task architecture: eth_rx (priority 4), raft (priority 3), health (priority 2), timer daemon
+- Health monitoring state machine: UP/SUSPECT/DOWN transitions, multi-observer corroboration, replicated health table
+- Clean build: Flash 36KB/1MB (3.45%), RAM 90KB/128KB (69%)
+
+**Simulator (POSIX):**
 - Wire protocol definitions - all packed C structs with static size assertions (`firmware/protocol/wire_format.h`)
 - Transport HAL abstraction with swappable backends (`firmware/transport/transport.h`)
-- UDP loopback transport for the simulator (`firmware/transport/transport_sim.c`)
-- Oracle integration layer - callback bridge between willemt/raft and the transport HAL, message serialization/dispatch, RAM-only persistence (`firmware/raft/raft_oracle.c`)
-- 3-node POSIX simulator demonstrating leader election and heartbeat replication (`sim/sim_main.c`)
+- UDP loopback transport (`firmware/transport/transport_sim.c`)
+- Oracle integration layer - callback bridge between willemt/raft and the transport HAL (`firmware/raft/raft_oracle.c`)
+- 3-node POSIX simulator with leader election and chaos mode heartbeat failure detection (`sim/sim_main.c`)
+
+**Verification tools:**
+- `tools/frame_sniffer.py` - scapy-based L2 frame capture decoding all 3 oracle EtherTypes
+- `tools/heartbeat_sender.py` - simulates compute node heartbeats for testing
+- `tools/verify_t10.sh` - orchestrates hardware verification (build, flash, UART capture, sniffer)
 
 **What does not exist yet:**
-- STM32 firmware (FreeRTOS tasks, Ethernet HAL, linker scripts, cross-compilation)
-- Health monitoring state machine (SUSPECT/DOWN escalation, multi-observer corroboration)
-- Oracle-agent host daemon
-- k3s fencing integration
+- Hardware verification (T10 - pending Nucleo-F207ZG USB passthrough)
+- Multi-node consensus on hardware (T11)
+- Oracle-agent host daemon (v0.10)
+- k3s fencing integration (v0.11)
 
 ## Repo structure
 
 ```
 raft-l2-oracle/
   firmware/
-    protocol/wire_format.h        # L2 wire protocol (packed structs, EtherTypes, frame header)
+    app/main.c                     # STM32 entry point: FreeRTOS tasks, queues, oracle init
+    config/FreeRTOSConfig.h        # FreeRTOS tuning (72KB heap, 1kHz tick, priorities)
+    config/stm32f2xx_hal_conf.h    # HAL module enables (ETH, GPIO, UART, RCC, TIM)
+    core/startup_stm32f207xx.s     # Vector table + Reset_Handler
+    core/system_stm32f2xx.c        # SystemInit: HSE -> PLL -> 120MHz
+    core/stm32f2xx_it.c            # Interrupt handlers (ETH, SysTick, faults)
+    protocol/wire_format.h         # L2 wire protocol (packed structs, EtherTypes, frame header)
     transport/transport.h          # Transport HAL interface (send/recv/now_ms)
-    transport/transport_sim.c      # POSIX UDP loopback backend
-    transport/transport_sim.h
-    raft/raft_oracle.h             # Oracle node context + API
-    raft/raft_oracle.c             # Raft callback bridge + message dispatch
-    health/health_monitor.h        # Health state machine (stub)
-    vendor/raft/                   # willemt/raft as git submodule (timblaktu fork)
+    transport/transport_eth.c      # STM32 Ethernet backend (DMA, LAN8742A PHY)
+    transport/transport_sim.c/h    # POSIX UDP loopback backend
+    raft/raft_oracle.h/c           # Oracle node context + Raft callback bridge
+    raft/raft_heap.c               # Bare-metal heap adapter (pvPortMalloc/vPortFree)
+    health/health_monitor.h/c      # Health state machine (UP/SUSPECT/DOWN, corroboration)
+    health/health_table.c          # Replicated health state table (Raft applylog)
+    drivers/CMSIS/                 # ARM Cortex-M3 headers
+    drivers/STM32F2xx_HAL_Driver/  # STM32 HAL sources (ETH, GPIO, UART, RCC, TIM, DMA)
+    linker/STM32F207ZGTx_FLASH.ld  # Linker script (Flash 0x08000000, SRAM 0x20000000)
+    vendor/raft/                   # willemt/raft git submodule (timblaktu/raft, nix branch)
+    vendor/freertos/               # FreeRTOS-Kernel V11.3.0 git submodule
+    CMakeLists.txt                 # Firmware build (arm-none-eabi cross-compilation)
   sim/
     CMakeLists.txt                 # Simulator build (raft as static lib + our code)
-    sim_main.c                     # 3-node threaded simulator
-  host/                            # oracle-agent (not yet implemented)
-  tools/                           # frame sniffer, chaos injection (not yet implemented)
-  flake.nix                        # Nix dev shell
+    sim_main.c                     # 3-node threaded simulator with chaos mode
+  host/                            # oracle-agent (not yet implemented - v0.10)
+  tools/
+    frame_sniffer.py               # Scapy L2 frame sniffer (decodes all 3 EtherTypes)
+    heartbeat_sender.py            # Simulates compute node heartbeats
+    verify_t10.sh                  # Hardware verification orchestrator
+  docs/
+    design.md                      # Full system design document (v0.5, 1600+ lines)
+    architecture.md                # Firmware architecture guide (see below)
+    diagrams/                      # DrawIO diagrams (editable .drawio.svg)
+    t1-build-environment-research.md
+    t2-freertos-integration-research.md
+  cmake/arm-none-eabi-gcc.cmake    # Cross-compilation toolchain file
+  CMakeLists.txt                   # Top-level (preset-driven dispatch)
+  CMakePresets.json                # firmware vs sim presets
+  flake.nix                        # Nix dev shell (gcc, cmake, arm-none-eabi-gcc, scapy, etc.)
 ```
 
 ## Building and running
 
 Requires Nix with flakes enabled.
 
+### POSIX simulator
+
 ```bash
-nix develop                          # enter dev shell (gcc, cmake, arm-none-eabi-gcc, valgrind, etc.)
+nix develop                          # enter dev shell
 cd sim && mkdir -p build && cd build
 cmake .. && make                     # build the POSIX simulator
 ./raft_sim                           # run 3-node simulation (default)
@@ -141,16 +149,55 @@ Nodes: 3, tick: 50ms, runtime: 10s
 [node 3] state=FOLLOWER term=0 leader=1 commit_idx=0
 ```
 
+### STM32 firmware
+
+```bash
+nix develop                          # enter dev shell (includes arm-none-eabi-gcc)
+cmake --preset firmware              # configure cross-compilation
+cmake --build build/firmware         # build .elf and .bin
+```
+
+Build output: `build/firmware/raft-l2-oracle.elf` (Flash: ~36KB, RAM: ~90KB)
+
+### Flash and verify (requires Nucleo-F207ZG via USB)
+
+```bash
+# Flash via OpenOCD + ST-LINK
+./tools/verify_t10.sh flash
+
+# Monitor UART output (115200 baud, /dev/ttyACM0)
+./tools/verify_t10.sh uart
+
+# Full T10 verification suite
+./tools/verify_t10.sh full
+```
+
+### Verification tools
+
+```bash
+# Capture and decode oracle L2 frames (requires root for raw sockets)
+sudo python3 tools/frame_sniffer.py eth0
+
+# Send test heartbeats simulating a compute node
+sudo python3 tools/heartbeat_sender.py eth0
+```
+
 ## Hardware target
 
-**Hackathon board:** STM32 Nucleo-F207ZG (Cortex-M3 @ 120MHz, 128KB SRAM, 1MB Flash, integrated Ethernet MAC + LAN8742A PHY). Chosen because it matches the AC5P CM3's ARM profile and forces the same memory discipline (128KB is tight, which is the point).
+**Hackathon board:** STM32 Nucleo-F207ZG (Cortex-M3 @ 120MHz, 128KB SRAM, 1MB Flash, integrated Ethernet MAC + LAN8742A PHY). Chosen because it matches the ARM profile of production switching ASIC service processors and forces the same memory discipline (128KB is tight, which is the point).
 
-**Production target:** AC5P embedded Cortex-M3 service processor. Only the transport layer changes - STM32 Ethernet HAL becomes CPSS management-frame inject/extract.
+**Production target:** Embedded Cortex-M3 service processor in a switching ASIC. Only the transport layer changes - STM32 Ethernet HAL becomes vendor SDK management-frame inject/extract.
 
 ## Dependencies
 
 - [willemt/raft](https://github.com/willemt/raft) (BSD-2-Clause) - C Raft consensus library, ~2.2K LOC, zero dependencies, callback-driven. Vendored as git submodule from [timblaktu/raft](https://github.com/timblaktu/raft) fork (adds 118 tests, 3 memory leak fixes, nix dev shell).
 
+## Firmware architecture
+
+For a detailed walkthrough of the firmware internals - FreeRTOS task layout, data flow, memory budget, and how to add new features - see [`docs/architecture.md`](docs/architecture.md).
+
+![Firmware Internals](docs/diagrams/firmware-internals.drawio.svg)
+
 ## Design document
 
-Full specification including memory budget analysis, FreeRTOS task layout, multi-observer corroboration logic, and oracle-agent fencing taxonomy: `~/src/k3s-ha/raft-stm32-l2-design.md` (v0.5).
+Full specification including memory budget analysis, FreeRTOS task layout, multi-observer corroboration logic, and oracle-agent fencing taxonomy: [`docs/design.md`](docs/design.md) (v0.5).

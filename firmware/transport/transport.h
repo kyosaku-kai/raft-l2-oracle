@@ -6,7 +6,7 @@
  *
  * Abstracts the network layer so the same Raft integration code works
  * on STM32 (raw Ethernet MAC), POSIX simulator (UDP loopback), and
- * eventually AC5P (CPSS inject/extract).
+ * eventually production SoC service processors (vendor SDK inject/extract).
  */
 
 #include "../protocol/wire_format.h"

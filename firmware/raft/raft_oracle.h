@@ -26,7 +26,7 @@
 #define ORACLE_TICK_MS 50
 
 /** Per-node context passed as user_data to raft callbacks */
-typedef struct {
+typedef struct oracle_node_ctx {
     raft_server_t      *raft;
     raft_transport_t   *transport;
     uint8_t             node_id;
@@ -38,6 +38,9 @@ typedef struct {
 
     /* Entry ID counter */
     int                 next_entry_id;
+
+    /* Health monitor (set after health_monitor_init, NULL until then) */
+    void               *health_ctx;
 } oracle_node_ctx_t;
 
 /**

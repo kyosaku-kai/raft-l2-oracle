@@ -8,7 +8,7 @@
  * Structs are packed, little-endian (ARM native). EtherType field
  * follows Ethernet II convention (big-endian on wire).
  *
- * See: ~/src/k3s-ha/raft-stm32-l2-design.md Section 4
+ * See: docs/design.md Section 4
  */
 
 #include <stdint.h>
