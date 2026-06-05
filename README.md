@@ -165,7 +165,36 @@ cmake --build build/firmware         # build .elf and .bin
 
 Build output: `build/firmware/firmware/app.elf` (Flash: ~36KB, RAM: ~90KB)
 
-### Flash and verify (requires Nucleo-F207ZG via USB)
+### Hardware setup (Nucleo-F207ZG)
+
+The Nucleo board connects via USB, providing both ST-LINK (flash/debug) and a Virtual COM Port (UART console) over a single cable.
+
+**WSL users:** The NixOS dev-team image auto-attaches ST-LINK devices (`0483:374b`) via usbipd-win. Requires usbipd-win installed on the Windows host:
+
+```powershell
+winget install -e --id dorssel.usbipd-win
+```
+
+After plugging in the Nucleo board, verify from WSL:
+
+```bash
+lsusb | grep STMicro                  # should show ST-LINK/V2-1
+ls /dev/ttyACM0                       # VCP for UART console
+openocd -f board/st_nucleo_f2.cfg     # test ST-LINK connectivity (Ctrl-C to stop)
+```
+
+If auto-attach is not configured on your machine, manually attach once:
+
+```bash
+usbipd.exe list                       # find the ST-LINK bus ID
+usbipd.exe attach --wsl --busid 3-1   # replace 3-1 with actual bus ID
+```
+
+For persistent auto-attach configuration, see the [NixOS-WSL hardware development guide](https://github.com/timblaktu/nixcfg/blob/main/docs/WSL-TEAM-QUICKSTART.md#hardware-development-usb-device-passthrough).
+
+**macOS/Linux users:** No USB forwarding needed - the device is natively accessible. Ensure OpenOCD is installed (`nix develop` provides it) and your user is in the `plugdev` group.
+
+### Flash and verify
 
 ```bash
 # Flash via OpenOCD + ST-LINK
