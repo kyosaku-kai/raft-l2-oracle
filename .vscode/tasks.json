@@ -1,0 +1,52 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Configure Firmware",
+            "type": "shell",
+            "command": "cmake --preset firmware",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Build Firmware",
+            "type": "shell",
+            "command": "cmake --build build/firmware",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc",
+            "dependsOn": "Configure Firmware"
+        },
+        {
+            "label": "Configure Simulator",
+            "type": "shell",
+            "command": "cmake --preset sim",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Build Simulator",
+            "type": "shell",
+            "command": "cmake --build build/sim",
+            "group": "build",
+            "problemMatcher": "$gcc",
+            "dependsOn": "Configure Simulator"
+        },
+        {
+            "label": "Flash",
+            "type": "shell",
+            "command": "cmake --build build/firmware --target flash",
+            "group": "test",
+            "problemMatcher": [],
+            "dependsOn": "Build Firmware"
+        },
+        {
+            "label": "Clean All",
+            "type": "shell",
+            "command": "rm -rf build/firmware build/sim",
+            "problemMatcher": []
+        }
+    ]
+}

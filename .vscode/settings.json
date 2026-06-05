@@ -1,0 +1,25 @@
+{
+    // Use clangd for IntelliSense (not Microsoft C/C++).
+    // clangd reads compile_commands.json and handles cross-compilation
+    // correctly with --query-driver.
+    "C_Cpp.intelliSenseEngine": "disabled",
+
+    "clangd.arguments": [
+        "--query-driver=**/arm-none-eabi*",
+        "--compile-commands-dir=${workspaceFolder}/build/firmware",
+        "--header-insertion=never"
+    ],
+
+    // CMake Tools: use presets from CMakePresets.json
+    "cmake.useCMakePresets": "always",
+
+    // Default to firmware preset (switch via CMake Tools status bar)
+    "cmake.configureOnOpen": false,
+
+    // Files to exclude from explorer (build artifacts, submodule internals)
+    "files.exclude": {
+        "build/": true,
+        "firmware/vendor/freertos/.git": true,
+        "firmware/vendor/raft/.git": true
+    }
+}

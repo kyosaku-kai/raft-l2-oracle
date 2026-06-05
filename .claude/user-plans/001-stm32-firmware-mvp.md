@@ -25,7 +25,7 @@
 | T9   | TASK:COMPLETE | Implement health monitoring state machine |
 | T10  | TASK:PENDING | Flash, boot, and verify single-node Raft on hardware (v0.8) |
 | T11  | TASK:PENDING | Multi-node consensus on hardware (v0.9) |
-| T12  | TASK:PENDING | IDE support files and colleague onboarding documentation |
+| T12  | TASK:COMPLETE | IDE support files and colleague onboarding documentation |
 
 ---
 

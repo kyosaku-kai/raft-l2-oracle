@@ -1,0 +1,56 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Firmware (OpenOCD)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/firmware/firmware/app.elf",
+            "device": "STM32F207ZG",
+            "runToEntryPoint": "main",
+            "configFiles": [
+                "interface/stlink.cfg",
+                "target/stm32f2x.cfg"
+            ],
+            "svdFile": "${workspaceFolder}/firmware/svd/STM32F217.svd",
+            "preLaunchTask": "Build Firmware",
+            "showDevDebugOutput": "parsed",
+            "interface": "swd"
+        },
+        {
+            "name": "Flash and Run (OpenOCD)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/firmware/firmware/app.elf",
+            "device": "STM32F207ZG",
+            "configFiles": [
+                "interface/stlink.cfg",
+                "target/stm32f2x.cfg"
+            ],
+            "svdFile": "${workspaceFolder}/firmware/svd/STM32F217.svd",
+            "preLaunchTask": "Build Firmware",
+            "showDevDebugOutput": "none",
+            "interface": "swd"
+        },
+        {
+            "name": "Attach to Running Firmware",
+            "type": "cortex-debug",
+            "request": "attach",
+            "servertype": "openocd",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/firmware/firmware/app.elf",
+            "device": "STM32F207ZG",
+            "configFiles": [
+                "interface/stlink.cfg",
+                "target/stm32f2x.cfg"
+            ],
+            "svdFile": "${workspaceFolder}/firmware/svd/STM32F217.svd",
+            "showDevDebugOutput": "parsed",
+            "interface": "swd"
+        }
+    ]
+}
