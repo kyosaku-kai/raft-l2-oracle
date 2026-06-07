@@ -290,8 +290,8 @@
 - [ ] Ethernet TX produces valid oracle frames (verified by sniffer)
 - [ ] Ethernet RX processes heartbeat frames (verified by UART log)
 
-**Next steps for items 5-6** (requires Ethernet cable):
-- Connect Nucleo RJ45 to CRS326 (e.g., ether3). Laptop/NUC already on same bridge.
+**Next steps for items 5-6** (Ethernet cable connected):
+- Nucleo RJ45 connected to CRS326 port #2 (ether2). Laptop USB-C adapter on same bridge (TBD port).
 - The STM32 sends broadcast frames (FF:FF:FF:FF:FF:FF) — flat bridge floods to all ports.
 - Run `tools/frame_sniffer.py <iface>` on laptop/NUC to verify TX frames.
 - Run `tools/heartbeat_sender.py <iface>` on laptop/NUC to test RX path.
