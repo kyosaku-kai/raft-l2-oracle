@@ -198,6 +198,11 @@ static void *node_thread(void *arg)
             last_health_tick = now_val;
         }
 
+        /* Broadcast cluster state every second (leader only) */
+        if (now_val - last_status >= 1000) {
+            health_table_broadcast_cluster_state(&sn->health, ctx);
+        }
+
         /* Status report every second */
         if (now_val - last_status >= 1000) {
             const char *state_str = "???";

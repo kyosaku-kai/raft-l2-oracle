@@ -28,6 +28,7 @@
 #include "raft_heap.h"
 #include "raft_oracle.h"
 #include "health_monitor.h"
+#include "node_config.h"
 
 UART_HandleTypeDef huart3;
 
@@ -201,6 +202,7 @@ static void vRaftTask(void *pvParameters)
     (void)pvParameters;
     oracle_node_ctx_t *ctx = &g_oracle_ctx;
     TickType_t last_tick = xTaskGetTickCount();
+    TickType_t last_cluster_state = last_tick;
 
     printf("raft: task started\r\n");
 
@@ -229,6 +231,12 @@ static void vRaftTask(void *pvParameters)
             /* LED: green = leader */
             HAL_GPIO_WritePin(LED_PORT, LED_GREEN_PIN,
                               oracle_is_leader(ctx) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+
+            /* Broadcast cluster state every 1s (leader only) */
+            if (now - last_cluster_state >= pdMS_TO_TICKS(1000)) {
+                last_cluster_state = now;
+                health_table_broadcast_cluster_state(&g_health_mon, ctx);
+            }
         }
     }
 }
@@ -404,11 +412,22 @@ int main(void)
     printf("boot ok (T8 task arch)\r\n");
     printf("heap total: %u bytes\r\n", (unsigned)configTOTAL_HEAP_SIZE);
 
+    printf("node_id=%d box_id=%d cluster_size=%d\r\n",
+           ORACLE_THIS_NODE_ID, ORACLE_THIS_BOX_ID, ORACLE_NUM_CLUSTER_NODES);
+
     /* Initialize Ethernet transport (blocks ~3-5s for PHY autoneg) */
     printf("ETH: initializing...\r\n");
-    g_transport = eth_transport_create(1, 1);
+    g_transport = eth_transport_create(ORACLE_THIS_NODE_ID, ORACLE_THIS_BOX_ID);
     if (g_transport) {
-        printf("ETH: init ok, MAC=02:CA:FE:01:00:01\r\n");
+        const oracle_peer_t *self = oracle_get_self();
+        if (self) {
+            printf("ETH: init ok, MAC=%02X:%02X:%02X:%02X:%02X:%02X\r\n",
+                   self->mac[0], self->mac[1], self->mac[2],
+                   self->mac[3], self->mac[4], self->mac[5]);
+        } else {
+            printf("ETH: init ok (node %d not in peer table?)\r\n",
+                   ORACLE_THIS_NODE_ID);
+        }
     } else {
         printf("ETH: init FAILED (no cable?) - using stub transport\r\n");
         /* Disable ETH IRQ to prevent spurious interrupt loops.
@@ -422,11 +441,18 @@ int main(void)
     raft_heap_init();
 
     /* Initialize raft oracle */
-    int oracle_rc = oracle_init(&g_oracle_ctx, 1, 1, g_transport);
+    int oracle_rc = oracle_init(&g_oracle_ctx, ORACLE_THIS_NODE_ID,
+                                ORACLE_THIS_BOX_ID, g_transport);
     if (oracle_rc == 0) {
-        oracle_add_node(&g_oracle_ctx, 1, 1); /* self */
+        /* Add self + all peers from compile-time config */
+        for (int i = 0; i < ORACLE_NUM_CLUSTER_NODES; i++) {
+            int is_self = (oracle_cluster_peers[i].node_id == ORACLE_THIS_NODE_ID);
+            oracle_add_node(&g_oracle_ctx,
+                            oracle_cluster_peers[i].node_id, is_self);
+        }
         size_t heap_free = xPortGetFreeHeapSize();
-        printf("raft: init ok, heap used=%u bytes\r\n",
+        printf("raft: init ok (%d nodes), heap used=%u bytes\r\n",
+               ORACLE_NUM_CLUSTER_NODES,
                (unsigned)(configTOTAL_HEAP_SIZE - heap_free));
         printf("raft: heap free=%u min-ever=%u\r\n",
                (unsigned)heap_free,
@@ -438,7 +464,7 @@ int main(void)
     /* Initialize health monitor and link to oracle context */
     health_monitor_init(&g_health_mon,
                         (struct oracle_node_ctx *)&g_oracle_ctx,
-                        g_transport, 1);
+                        g_transport, ORACLE_THIS_BOX_ID);
     g_oracle_ctx.health_ctx = &g_health_mon;
 
     /* Create queues */

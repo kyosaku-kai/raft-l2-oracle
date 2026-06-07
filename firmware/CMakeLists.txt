@@ -4,10 +4,17 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Linker script
 set(LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/linker/STM32F207ZGTx_FLASH.ld)
 
+# Node identity: cmake -DNODE_ID=2 .. (default: 1)
+if(NOT DEFINED NODE_ID)
+    set(NODE_ID 1)
+endif()
+
 # STM32F2 defines
 add_compile_definitions(
     STM32F207xx
     USE_HAL_DRIVER
+    ORACLE_THIS_NODE_ID=${NODE_ID}
+    ORACLE_THIS_BOX_ID=1
 )
 
 # --- FreeRTOS-Kernel (native CMake integration) ---
@@ -58,7 +65,8 @@ target_compile_definitions(raft_lib PRIVATE
     RAFT_NO_DEBUG_LOG
 )
 
-# Firmware executable
+# Firmware executable — output name includes node ID
+set(APP_NAME "raft_oracle_node${NODE_ID}")
 add_executable(app
     startup/startup_stm32f207zg.s
     core/system_stm32f2xx.c
@@ -88,6 +96,8 @@ target_include_directories(app PRIVATE
 
 target_link_libraries(app PRIVATE freertos_kernel raft_lib)
 
+set_target_properties(app PROPERTIES OUTPUT_NAME ${APP_NAME})
+
 target_link_options(app PRIVATE
     -T${LINKER_SCRIPT}
     -Wl,--print-memory-usage
@@ -100,10 +110,10 @@ set_target_properties(app PROPERTIES
 
 # Generate .bin and .hex from .elf
 add_custom_command(TARGET app POST_BUILD
-    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:app> $<TARGET_FILE_DIR:app>/app.bin
-    COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:app> $<TARGET_FILE_DIR:app>/app.hex
+    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:app> $<TARGET_FILE_DIR:app>/${APP_NAME}.bin
+    COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:app> $<TARGET_FILE_DIR:app>/${APP_NAME}.hex
     COMMAND ${CMAKE_SIZE} $<TARGET_FILE:app>
-    COMMENT "Generating .bin and .hex, printing size"
+    COMMENT "Generating ${APP_NAME}.bin and .hex, printing size"
 )
 
 # Flash via OpenOCD
@@ -123,3 +133,8 @@ add_custom_target(debug
         -f target/stm32f2x.cfg
     COMMENT "Starting OpenOCD GDB server on :3333"
 )
+
+# Multi-node build:
+#   mkdir build-node2 && cd build-node2
+#   cmake -DNODE_ID=2 .. && make
+# Or use the top-level Makefile convenience targets (if added).

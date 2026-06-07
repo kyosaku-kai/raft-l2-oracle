@@ -157,6 +157,14 @@ void health_table_apply(health_monitor_t *hm,
                         uint32_t term);
 
 /**
+ * Broadcast MSG_CLUSTER_STATE (0x88B6 0x11) to local compute nodes.
+ * Leader-only; call every ~1 second from the raft task.
+ * oracle-agent depends on receiving this for its safety interlock.
+ */
+void health_table_broadcast_cluster_state(health_monitor_t *hm,
+                                          struct oracle_node_ctx *ctx);
+
+/**
  * Get the health table for display/debugging.
  */
 const node_health_entry_t *health_monitor_get_table(const health_monitor_t *hm,

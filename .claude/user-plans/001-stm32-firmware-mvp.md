@@ -24,7 +24,7 @@
 | T8   | TASK:COMPLETE | Wire up FreeRTOS tasks (eth_rx, raft, health, timer) |
 | T9   | TASK:COMPLETE | Implement health monitoring state machine |
 | T10  | TASK:IN_PROGRESS | Flash, boot, and verify single-node Raft on hardware (v0.8) |
-| T10b | TASK:PENDING | T11 software prep: multi-node config, cluster state broadcast |
+| T10b | TASK:COMPLETE | T11 software prep: multi-node config, cluster state broadcast |
 | T11  | TASK:PENDING | Multi-node consensus on hardware (v0.9) |
 | T12  | TASK:COMPLETE | IDE support files and colleague onboarding documentation |
 
@@ -360,6 +360,15 @@
 - MAC scheme: `02:CA:FE:<box_id>:00:01` for STM32
 
 **DoD**: `cmake -DNODE_ID=2 .. && make` produces a firmware that boots as node 2, adds nodes 1 and 3 as peers, and begins leader election. Sim 3-node test passes. MSG_CLUSTER_STATE logic ready for wire verification in T11.
+
+**Completed** (2026-06-07):
+- `firmware/config/node_config.h`: oracle_peer_t table, ORACLE_THIS_NODE_ID/BOX_ID, MAC scheme 02:CA:FE:<box>:00:<node>
+- `main.c`: loops over oracle_cluster_peers[] for oracle_add_node, uses config for eth_transport_create
+- `firmware/CMakeLists.txt`: -DNODE_ID=N compile define, output as raft_oracle_nodeN.elf/.bin/.hex
+- `health_table.c`: health_table_broadcast_cluster_state() — leader-only, builds payload_cluster_state_t + node_health_wire_t entries
+- `main.c` raft task: calls broadcast every 1s when timer fires
+- `sim_main.c`: calls broadcast in status loop (leader sends, followers no-op)
+- Sim builds clean, 3-node chaos test passes (election + DOWN detection)
 
 ---
 
