@@ -290,6 +290,24 @@
 - [ ] Ethernet TX produces valid oracle frames (verified by sniffer)
 - [ ] Ethernet RX processes heartbeat frames (verified by UART log)
 
+**Next steps for items 5-6** (requires Ethernet cable):
+- Connect Nucleo RJ45 to CRS326 (e.g., ether3). Laptop/NUC already on same bridge.
+- The STM32 sends broadcast frames (FF:FF:FF:FF:FF:FF) — flat bridge floods to all ports.
+- Run `tools/frame_sniffer.py <iface>` on laptop/NUC to verify TX frames.
+- Run `tools/heartbeat_sender.py <iface>` on laptop/NUC to test RX path.
+- MikroTik port mirroring can be set up for persistent monitoring (useful for T11 multi-node).
+- `tools/verify_t10.sh full` automates the UART analysis portion.
+
+**Bugs fixed** (sessions 1-2, commits 1571f6c, d919f4d):
+1. bare_realloc NULL — broke raft_add_node (node array growth)
+2. NULL transport crash — ETH init fails with no cable, stub transport added
+3. HAL_UART_Transmit HAL_GetTick dependency — replaced with register polling
+4. SysTick clock source (ROOT CAUSE) — `configSYSTICK_CLOCK_HZ` define triggers wrong clock (AHB/8 = 15 MHz), 8x tick slowdown
+5. setvbuf unbuffered stdout — nosys _sbrk breaks newlib-nano buffer alloc
+6. ETH_IRQn left enabled after failed init — disabled to prevent interrupt loop
+7. Heap-used calculation negative — heap_4 lazy init
+8. Printf interleaving — offset health report by 2.5s
+
 **DoD**: Single STM32 running Raft with L2 frames on wire. All verification checklist items pass.
 
 ---
