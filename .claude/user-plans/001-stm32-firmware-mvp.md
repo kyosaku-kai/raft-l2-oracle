@@ -283,10 +283,10 @@
 - LED status: green = leader, red = no quorum (or similar visual indicator)
 
 **Verification checklist**:
-- [ ] Board boots to FreeRTOS in <1 second
-- [ ] Raft state = LEADER (single node, trivial quorum)
-- [ ] Heap usage within design doc budget (<102KB total, >26KB free)
-- [ ] No stack overflows after 60 seconds continuous run
+- [x] Board boots to FreeRTOS in <1 second
+- [x] Raft state = LEADER (single node, trivial quorum)
+- [x] Heap usage within design doc budget (<102KB total, >26KB free) — 29KB free at runtime
+- [x] No stack overflows after 60 seconds continuous run — all HWMs healthy
 - [ ] Ethernet TX produces valid oracle frames (verified by sniffer)
 - [ ] Ethernet RX processes heartbeat frames (verified by UART log)
 
