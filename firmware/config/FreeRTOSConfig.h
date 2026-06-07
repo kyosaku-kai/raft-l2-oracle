@@ -14,7 +14,11 @@
 /* Cortex-M3 specific (STM32F207ZG @ 120 MHz) */
 #define configCPU_CLOCK_HZ                    ((uint32_t)120000000)
 #define configTICK_RATE_HZ                    ((TickType_t)1000)
-#define configSYSTICK_CLOCK_HZ                configCPU_CLOCK_HZ
+/* Do NOT define configSYSTICK_CLOCK_HZ here. When undefined, the FreeRTOS
+ * CM3 port defaults to configCPU_CLOCK_HZ and sets the CLKSOURCE bit in
+ * SysTick CTRL to use the processor clock (120 MHz). Defining it - even to
+ * the same value - makes the port select the external reference clock
+ * (AHB/8 = 15 MHz), causing an 8x tick slowdown. */
 
 /* Scheduler */
 #define configUSE_PREEMPTION                  1

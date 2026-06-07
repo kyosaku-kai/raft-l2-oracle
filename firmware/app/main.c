@@ -235,9 +235,12 @@ static void vHealthTask(void *pvParameters)
 {
     (void)pvParameters;
     uint32_t hb_count = 0;
-    uint32_t last_report = 0;
+    uint32_t last_report;
 
     printf("health: task started\r\n");
+
+    /* Offset from monitor_task's 5s report to avoid printf interleaving */
+    last_report = (uint32_t)xTaskGetTickCount() - pdMS_TO_TICKS(2500);
 
     for (;;) {
         rx_msg_t msg;
@@ -340,8 +343,8 @@ static void vMonitorTask(void *pvParameters)
                    (int)raft_get_current_leader(g_oracle_ctx.raft));
         }
 
-        /* Transport stats */
-        if (g_transport) {
+        /* Transport stats (only for real ETH transport, not stub) */
+        if (g_transport && g_transport != &g_stub_transport) {
             eth_transport_stats_t stats;
             eth_transport_get_stats(g_transport, &stats);
             printf("  eth: tx=%lu err=%lu rx=%lu drop=%lu filt=%lu dma=%lu\r\n",
@@ -388,6 +391,12 @@ int main(void)
     GPIO_Init();
     USART3_Init();
 
+    /* Force unbuffered stdout BEFORE any printf.
+     * nosys.specs provides _sbrk returning -1, so malloc always fails.
+     * Without this, newlib-nano's __smakebuf tries to malloc a stdio buffer,
+     * fails, and may set __SERR on stdout - silencing all future printf. */
+    setvbuf(stdout, NULL, _IONBF, 0);
+
     printf("boot ok (T8 task arch)\r\n");
     printf("heap total: %u bytes\r\n", (unsigned)configTOTAL_HEAP_SIZE);
 
@@ -398,6 +407,10 @@ int main(void)
         printf("ETH: init ok, MAC=02:CA:FE:01:00:01\r\n");
     } else {
         printf("ETH: init FAILED (no cable?) - using stub transport\r\n");
+        /* Disable ETH IRQ to prevent spurious interrupt loops.
+         * HAL_ETH_MspInit enables it, but with no initialized handle,
+         * ETH_IRQHandler would return without clearing the flag. */
+        HAL_NVIC_DisableIRQ(ETH_IRQn);
         g_transport = &g_stub_transport;
     }
 
@@ -405,16 +418,14 @@ int main(void)
     raft_heap_init();
 
     /* Initialize raft oracle */
-    size_t heap_before = xPortGetFreeHeapSize();
-
     int oracle_rc = oracle_init(&g_oracle_ctx, 1, 1, g_transport);
     if (oracle_rc == 0) {
         oracle_add_node(&g_oracle_ctx, 1, 1); /* self */
-        size_t heap_after = xPortGetFreeHeapSize();
-        printf("raft: init ok, heap used=%d bytes\r\n",
-               (int)(heap_before - heap_after));
+        size_t heap_free = xPortGetFreeHeapSize();
+        printf("raft: init ok, heap used=%u bytes\r\n",
+               (unsigned)(configTOTAL_HEAP_SIZE - heap_free));
         printf("raft: heap free=%u min-ever=%u\r\n",
-               (unsigned)heap_after,
+               (unsigned)heap_free,
                (unsigned)xPortGetMinimumEverFreeHeapSize());
     } else {
         printf("raft: init FAILED\r\n");
