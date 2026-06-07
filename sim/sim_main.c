@@ -78,7 +78,7 @@ static void *compute_thread(void *arg)
     memcpy(ann.hostname, "sim", 3);
 
     cn->transport->send(cn->transport, cn->stm32_node_id,
-                        ETHERTYPE_HEARTBEAT, MSG_NODE_ANNOUNCE,
+                        ETHERTYPE_HEARTBEAT, MSG_NODE_ANNOUNCE, 0,
                         &ann, sizeof(ann));
 
     /* Wait a bit for the announce to be processed */
@@ -94,7 +94,7 @@ static void *compute_thread(void *arg)
         hb.load_pct = 150; /* 15.0% simulated load */
 
         cn->transport->send(cn->transport, cn->stm32_node_id,
-                            ETHERTYPE_HEARTBEAT, MSG_NODE_HEARTBEAT,
+                            ETHERTYPE_HEARTBEAT, MSG_NODE_HEARTBEAT, 0,
                             &hb, sizeof(hb));
 
         usleep(HB_INTERVAL_MS * 1000);
@@ -154,15 +154,16 @@ static void *node_thread(void *arg)
             uint16_t ethertype;
             raft_msg_type_t type;
             uint8_t src_node;
+            uint32_t msg_term;
             uint8_t payload[128];
 
             int received = ctx->transport->recv(ctx->transport, &ethertype,
-                                                &type, &src_node,
+                                                &type, &src_node, &msg_term,
                                                 payload, sizeof(payload), 0);
             if (received <= 0) break;
 
             if (ethertype == ETHERTYPE_RAFT) {
-                oracle_dispatch_raft_message(ctx, src_node, type,
+                oracle_dispatch_raft_message(ctx, src_node, type, msg_term,
                                              payload, (size_t)received);
             } else if (ethertype == ETHERTYPE_HEARTBEAT) {
                 if (type == MSG_NODE_HEARTBEAT &&

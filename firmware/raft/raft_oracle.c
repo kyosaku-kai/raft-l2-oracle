@@ -33,6 +33,7 @@ static int cb_send_requestvote(raft_server_t *raft, void *udata,
 
     return ctx->transport->send(ctx->transport, (uint8_t)peer_id,
                                 ETHERTYPE_RAFT, MSG_REQUEST_VOTE,
+                                (uint32_t)msg->term,
                                 &payload, sizeof(payload));
 }
 
@@ -81,6 +82,7 @@ static int cb_send_appendentries(raft_server_t *raft, void *udata,
 
     return ctx->transport->send(ctx->transport, (uint8_t)peer_id,
                                 ETHERTYPE_RAFT, MSG_APPEND_ENTRIES,
+                                (uint32_t)msg->term,
                                 buf, total_len);
 }
 
@@ -289,6 +291,7 @@ void oracle_destroy(oracle_node_ctx_t *ctx)
 int oracle_dispatch_raft_message(oracle_node_ctx_t *ctx,
                                  uint8_t src_node_id,
                                  raft_msg_type_t msg_type,
+                                 uint32_t term,
                                  const void *payload, size_t len)
 {
     raft_node_t *sender = raft_get_node(ctx->raft, src_node_id);
@@ -300,13 +303,11 @@ int oracle_dispatch_raft_message(oracle_node_ctx_t *ctx,
         const payload_request_vote_t *p = (const payload_request_vote_t *)payload;
 
         msg_requestvote_t rv;
-        rv.term = raft_get_current_term(ctx->raft); /* sender's term is in header */
+        rv.term = (raft_term_t)term;
         rv.candidate_id = (raft_node_id_t)p->candidate_id;
         rv.last_log_idx = (raft_index_t)p->last_log_idx;
         rv.last_log_term = (raft_term_t)p->last_log_term;
 
-        /* Extract term from the sim header - for now use the raft library's term.
-         * In a real implementation, the term comes from the wire header. */
         msg_requestvote_response_t resp;
         int e = raft_recv_requestvote(ctx->raft, sender, &rv, &resp);
 
@@ -317,6 +318,7 @@ int oracle_dispatch_raft_message(oracle_node_ctx_t *ctx,
 
         ctx->transport->send(ctx->transport, src_node_id,
                              ETHERTYPE_RAFT, MSG_REQUEST_VOTE_RESP,
+                             (uint32_t)resp.term,
                              &rp, sizeof(rp));
         return e;
     }
@@ -327,7 +329,7 @@ int oracle_dispatch_raft_message(oracle_node_ctx_t *ctx,
             (const payload_request_vote_resp_t *)payload;
 
         msg_requestvote_response_t resp;
-        resp.term = raft_get_current_term(ctx->raft);
+        resp.term = (raft_term_t)term;
         resp.vote_granted = (int)p->vote_granted;
 
         return raft_recv_requestvote_response(ctx->raft, sender, &resp);
@@ -340,7 +342,7 @@ int oracle_dispatch_raft_message(oracle_node_ctx_t *ctx,
 
         msg_appendentries_t ae;
         memset(&ae, 0, sizeof(ae));
-        ae.term = raft_get_current_term(ctx->raft);
+        ae.term = (raft_term_t)term;
         ae.prev_log_idx = (raft_index_t)p->prev_log_idx;
         ae.prev_log_term = (raft_term_t)p->prev_log_term;
         ae.leader_commit = (raft_index_t)p->leader_commit;
@@ -388,6 +390,7 @@ int oracle_dispatch_raft_message(oracle_node_ctx_t *ctx,
 
         ctx->transport->send(ctx->transport, src_node_id,
                              ETHERTYPE_RAFT, MSG_APPEND_ENTRIES_RESP,
+                             (uint32_t)resp.term,
                              &rp, sizeof(rp));
         return e;
     }
@@ -408,7 +411,7 @@ int oracle_dispatch_raft_message(oracle_node_ctx_t *ctx,
         }
 
         msg_appendentries_response_t resp;
-        resp.term = raft_get_current_term(ctx->raft);
+        resp.term = (raft_term_t)term;
         resp.success = (int)p->success;
         resp.current_idx = (raft_index_t)p->current_idx;
         resp.first_idx = (raft_index_t)p->first_idx;

@@ -23,12 +23,14 @@ struct raft_transport {
      * @param dst_node  Destination node ID
      * @param ethertype EtherType (0x88B5, 0x88B6, 0x88B7)
      * @param type      Message type (raft_msg_type_t)
+     * @param term      Raft term (written into frame header)
      * @param payload   Payload bytes (already serialized)
      * @param len       Payload length
      * @return 0 on success, -1 on error
      */
     int (*send)(raft_transport_t *t, uint8_t dst_node, uint16_t ethertype,
-                raft_msg_type_t type, const void *payload, size_t len);
+                raft_msg_type_t type, uint32_t term,
+                const void *payload, size_t len);
 
     /**
      * Receive a message (blocking with timeout).
@@ -37,13 +39,14 @@ struct raft_transport {
      * @param ethertype [out] EtherType of received frame
      * @param type      [out] Message type
      * @param src_node  [out] Sender's node ID
+     * @param term      [out] Raft term from frame header
      * @param payload   [out] Payload buffer
      * @param max_len   Max payload buffer size
      * @param timeout_ms Timeout (0 = non-blocking poll)
      * @return Bytes received, 0 on timeout, -1 on error
      */
     int (*recv)(raft_transport_t *t, uint16_t *ethertype,
-                raft_msg_type_t *type, uint8_t *src_node,
+                raft_msg_type_t *type, uint8_t *src_node, uint32_t *term,
                 void *payload, size_t max_len, uint32_t timeout_ms);
 
     /**

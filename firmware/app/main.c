@@ -34,14 +34,15 @@ UART_HandleTypeDef huart3;
 /* --- Stub transport (used when Ethernet init fails) --- */
 
 static int stub_send(raft_transport_t *t, uint8_t dst, uint16_t etype,
-                     raft_msg_type_t type, const void *p, size_t len) {
-    (void)t; (void)dst; (void)etype; (void)type; (void)p; (void)len;
+                     raft_msg_type_t type, uint32_t term,
+                     const void *p, size_t len) {
+    (void)t; (void)dst; (void)etype; (void)type; (void)term; (void)p; (void)len;
     return -1;
 }
 static int stub_recv(raft_transport_t *t, uint16_t *etype,
-                     raft_msg_type_t *type, uint8_t *src,
+                     raft_msg_type_t *type, uint8_t *src, uint32_t *term,
                      void *p, size_t max, uint32_t tmo) {
-    (void)t; (void)etype; (void)type; (void)src; (void)p; (void)max; (void)tmo;
+    (void)t; (void)etype; (void)type; (void)src; (void)term; (void)p; (void)max; (void)tmo;
     vTaskDelay(pdMS_TO_TICKS(1000));
     return 0;
 }
@@ -71,6 +72,7 @@ typedef struct {
     raft_msg_type_t msg_type;
     uint8_t         src_node;
     uint16_t        payload_len;
+    uint32_t        term;
     uint8_t         payload[ORACLE_MAX_PAYLOAD_V1];
 } rx_msg_t;
 
@@ -150,9 +152,10 @@ static void vEthRxTask(void *pvParameters)
         uint16_t ethertype;
         raft_msg_type_t msg_type;
         uint8_t src_node;
+        uint32_t term;
         uint8_t payload[ORACLE_MAX_PAYLOAD_V1];
 
-        int len = tp->recv(tp, &ethertype, &msg_type, &src_node,
+        int len = tp->recv(tp, &ethertype, &msg_type, &src_node, &term,
                            payload, sizeof(payload), portMAX_DELAY);
         if (len <= 0)
             continue;
@@ -161,6 +164,7 @@ static void vEthRxTask(void *pvParameters)
         msg.msg_type = msg_type;
         msg.src_node = src_node;
         msg.payload_len = (uint16_t)len;
+        msg.term = term;
         memcpy(msg.payload, payload, (size_t)len);
 
         if (ethertype == ETHERTYPE_RAFT) {
@@ -206,13 +210,13 @@ static void vRaftTask(void *pvParameters)
         rx_msg_t msg;
         if (xQueueReceive(raft_inbox, &msg, pdMS_TO_TICKS(ORACLE_TICK_MS)) == pdTRUE) {
             oracle_dispatch_raft_message(ctx, msg.src_node, msg.msg_type,
-                                         msg.payload, msg.payload_len);
+                                         msg.term, msg.payload, msg.payload_len);
         }
 
         /* Drain any remaining queued messages (non-blocking) */
         while (xQueueReceive(raft_inbox, &msg, 0) == pdTRUE) {
             oracle_dispatch_raft_message(ctx, msg.src_node, msg.msg_type,
-                                         msg.payload, msg.payload_len);
+                                         msg.term, msg.payload, msg.payload_len);
         }
 
         /* Check if timer fired (consume all pending notifications) */

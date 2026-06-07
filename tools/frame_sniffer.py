@@ -50,7 +50,7 @@ def decode_oracle_header(data):
     if len(data) < 10:
         return None
     version, msg_type, node_id, box_id, term, payload_len = struct.unpack_from(
-        "<BBBBIh", data, 0
+        "<BBBBIH", data, 0
     )
     return {
         "version": (version >> 4) & 0xF,

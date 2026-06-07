@@ -50,7 +50,8 @@ static uint64_t sim_now_ms(raft_transport_t *t)
 }
 
 static int sim_send(raft_transport_t *t, uint8_t dst_node, uint16_t ethertype,
-                    raft_msg_type_t type, const void *payload, size_t len)
+                    raft_msg_type_t type, uint32_t term,
+                    const void *payload, size_t len)
 {
     sim_transport_data_t *sd = (sim_transport_data_t *)t->impl_data;
 
@@ -64,7 +65,7 @@ static int sim_send(raft_transport_t *t, uint8_t dst_node, uint16_t ethertype,
     hdr->msg_type = (uint8_t)type;
     hdr->node_id = sd->node_id;
     hdr->box_id = sd->box_id;
-    hdr->term = 0; /* term is set by caller in the payload, not the sim header */
+    hdr->term = term;
     hdr->payload_len = (uint16_t)len;
     hdr->ethertype = ethertype;
 
@@ -83,7 +84,7 @@ static int sim_send(raft_transport_t *t, uint8_t dst_node, uint16_t ethertype,
 }
 
 static int sim_recv(raft_transport_t *t, uint16_t *ethertype,
-                    raft_msg_type_t *type, uint8_t *src_node,
+                    raft_msg_type_t *type, uint8_t *src_node, uint32_t *term,
                     void *payload, size_t max_len, uint32_t timeout_ms)
 {
     sim_transport_data_t *sd = (sim_transport_data_t *)t->impl_data;
@@ -107,6 +108,7 @@ static int sim_recv(raft_transport_t *t, uint16_t *ethertype,
     *type = (raft_msg_type_t)hdr->msg_type;
     *src_node = hdr->node_id;
     *ethertype = hdr->ethertype;
+    *term = hdr->term;
 
     size_t payload_len = hdr->payload_len;
     if (payload_len > max_len)

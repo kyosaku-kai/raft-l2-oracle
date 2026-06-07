@@ -151,7 +151,8 @@ static uint64_t eth_now_ms(raft_transport_t *t)
 /* --- Transport interface: send --- */
 
 static int eth_send(raft_transport_t *t, uint8_t dst_node, uint16_t ethertype,
-                    raft_msg_type_t type, const void *payload, size_t len)
+                    raft_msg_type_t type, uint32_t term,
+                    const void *payload, size_t len)
 {
     (void)dst_node; /* broadcast for T6, unicast table added in T8 */
     eth_transport_data_t *ed = (eth_transport_data_t *)t->impl_data;
@@ -176,7 +177,7 @@ static int eth_send(raft_transport_t *t, uint8_t dst_node, uint16_t ethertype,
     oracle_frame_header_t *hdr = (oracle_frame_header_t *)buf;
 
     oracle_frame_init(hdr, broadcast_mac, ed->src_mac, ethertype,
-                      (uint8_t)type, ed->node_id, ed->box_id, 0, (uint16_t)len);
+                      (uint8_t)type, ed->node_id, ed->box_id, term, (uint16_t)len);
 
     if (len > 0)
         memcpy(buf + sizeof(oracle_frame_header_t), payload, len);
@@ -234,19 +235,23 @@ static void rx_descriptors_release(ETH_HandleTypeDef *heth)
 /* --- Transport interface: recv --- */
 
 static int eth_recv(raft_transport_t *t, uint16_t *ethertype,
-                    raft_msg_type_t *type, uint8_t *src_node,
+                    raft_msg_type_t *type, uint8_t *src_node, uint32_t *term,
                     void *payload, size_t max_len, uint32_t timeout_ms)
 {
     eth_transport_data_t *ed = (eth_transport_data_t *)t->impl_data;
 
-    /* Block until ISR signals a frame is available, or timeout */
-    if (xSemaphoreTake(ed->rx_sem, pdMS_TO_TICKS(timeout_ms)) != pdTRUE)
-        return 0; /* timeout */
-
-    /* Process received frame(s) from task context (safe for HAL_LOCK) */
+    /* First try to get a frame without blocking — handles the case where
+     * multiple frames arrived with a single semaphore give (binary semaphore
+     * can only store one signal, but DMA may have queued several frames). */
     if (HAL_ETH_GetReceivedFrame_IT(&ed->heth) != HAL_OK) {
-        /* Spurious wakeup or descriptor not ready */
-        return 0;
+        /* No frame ready — block until ISR signals, or timeout */
+        if (xSemaphoreTake(ed->rx_sem, pdMS_TO_TICKS(timeout_ms)) != pdTRUE)
+            return 0; /* timeout */
+
+        if (HAL_ETH_GetReceivedFrame_IT(&ed->heth) != HAL_OK) {
+            /* Spurious wakeup or descriptor not ready */
+            return 0;
+        }
     }
 
     uint8_t *frame = (uint8_t *)ed->heth.RxFrameInfos.buffer;
@@ -289,6 +294,7 @@ static int eth_recv(raft_transport_t *t, uint16_t *ethertype,
     *ethertype = etype;
     *type = (raft_msg_type_t)hdr->msg_type;
     *src_node = hdr->node_id;
+    *term = hdr->term;
 
     /* Copy payload to caller buffer */
     uint16_t payload_len = hdr->payload_len;

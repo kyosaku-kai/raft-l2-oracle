@@ -24,6 +24,7 @@
 | T8   | TASK:COMPLETE | Wire up FreeRTOS tasks (eth_rx, raft, health, timer) |
 | T9   | TASK:COMPLETE | Implement health monitoring state machine |
 | T10  | TASK:IN_PROGRESS | Flash, boot, and verify single-node Raft on hardware (v0.8) |
+| T10b | TASK:PENDING | T11 software prep: multi-node config, cluster state broadcast |
 | T11  | TASK:PENDING | Multi-node consensus on hardware (v0.9) |
 | T12  | TASK:COMPLETE | IDE support files and colleague onboarding documentation |
 
@@ -308,7 +309,57 @@
 7. Heap-used calculation negative — heap_4 lazy init
 8. Printf interleaving — offset health report by 2.5s
 
+**Code quality fixes** (session 3, pre-hardware-test):
+9. heartbeat_sender.py: `struct.pack("<BBBBIN")` → `"<BBBBIH"` — N is invalid with `<` prefix (would crash at runtime, blocking T10 item 6)
+10. frame_sniffer.py: `"<BBBBIh"` → `"<BBBBIH"` — signed h for uint16 payload_len
+11. Term propagation: added `uint32_t term` to transport send/recv interface; raft_oracle.c dispatch now uses wire term instead of local term (was using wrong term for all raft messages — critical for T11 multi-node)
+12. Multi-frame RX: `eth_recv` now tries `HAL_ETH_GetReceivedFrame_IT` before blocking on semaphore, fixing frame loss when multiple frames arrive between task wakeups (binary semaphore can only store one signal)
+
 **DoD**: Single STM32 running Raft with L2 frames on wire. All verification checklist items pass.
+
+---
+
+### T10b: T11 software prep — multi-node config, cluster state broadcast
+
+**Goal**: Prepare all firmware code needed for multi-node operation so that when 3 boards are available, it's just flash-and-go. No hardware required for this task.
+
+**Depends on**: T8 (task arch), T9 (health monitor)
+
+**Deliverables**:
+
+1. **Compile-time node configuration** (`firmware/config/node_config.h`)
+   - `ORACLE_THIS_NODE_ID` and `ORACLE_THIS_BOX_ID` — per-board identity
+   - Static peer table: `{ node_id, box_id, mac[6] }` for all cluster members
+   - CMake `-DNODE_ID=N` flag to build per-board firmware variants
+   - Default: 3-node cluster (IDs 1,2,3 all box_id=1) matching n3x-infrathon's kas overlays
+
+2. **Multi-node boot in main.c**
+   - Replace hardcoded `oracle_add_node(&g_oracle_ctx, 1, 1)` with loop over peer table
+   - Add self + all peers from compile-time config
+   - Keep single-node as a valid config (NUM_PEERS=0)
+
+3. **MSG_CLUSTER_STATE periodic broadcast** (`health_table.c` or new `cluster_state.c`)
+   - Every 1 second, broadcast 0x88B6 MSG_CLUSTER_STATE frame containing:
+     - Leader node/box, quorum_healthy flag
+     - Per-node health table dump (node_health_wire_t entries)
+   - The oracle-agent in n3x-infrathon **depends on receiving this** for its safety interlock
+   - Only leader sends (followers don't broadcast to avoid confusion)
+
+4. **CMake multi-node build targets**
+   - `make node1`, `make node2`, `make node3` — convenience targets
+   - Or single parametric: `cmake -DNODE_ID=2 ..` → sets `ORACLE_THIS_NODE_ID=2`
+   - Each produces `raft_oracle_nodeN.elf`
+
+5. **Sim validation**
+   - Verify 3-node sim still works after config refactor
+   - Add sim_main.c cluster state display (print when MSG_CLUSTER_STATE would be sent)
+
+**Identity alignment with n3x-infrathon**:
+- STM32 node IDs: 1, 2, 3 (one per box in production; all box_id=1 for single-box hackathon demo)
+- Compute node IDs (heartbeat senders): 101-104 (matching oracle-agent ORACLE_NODE_ID env vars)
+- MAC scheme: `02:CA:FE:<box_id>:00:01` for STM32
+
+**DoD**: `cmake -DNODE_ID=2 .. && make` produces a firmware that boots as node 2, adds nodes 1 and 3 as peers, and begins leader election. Sim 3-node test passes. MSG_CLUSTER_STATE logic ready for wire verification in T11.
 
 ---
 

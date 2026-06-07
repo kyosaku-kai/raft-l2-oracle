@@ -102,6 +102,7 @@ int oracle_is_leader(oracle_node_ctx_t *ctx);
  * @param ctx           This node's context
  * @param src_node_id   Sender's node ID
  * @param msg_type      Message type from wire header
+ * @param term          Raft term from wire frame header
  * @param payload       Deserialized payload bytes
  * @param len           Payload length
  * @return 0 on success
@@ -109,6 +110,7 @@ int oracle_is_leader(oracle_node_ctx_t *ctx);
 int oracle_dispatch_raft_message(oracle_node_ctx_t *ctx,
                                  uint8_t src_node_id,
                                  raft_msg_type_t msg_type,
+                                 uint32_t term,
                                  const void *payload, size_t len);
 
 /**

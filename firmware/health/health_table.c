@@ -59,7 +59,7 @@ void health_table_apply(health_monitor_t *hm,
 
         /* Broadcast to all local compute nodes (use node 0xFF as broadcast) */
         hm->transport->send(hm->transport, 0xFF,
-                            ETHERTYPE_HEALTH, msg_type,
+                            ETHERTYPE_HEALTH, msg_type, term,
                             &evt, sizeof(evt));
     }
 }

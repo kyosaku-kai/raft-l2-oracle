@@ -51,7 +51,7 @@ def build_frame(dst_mac, src_mac, ethertype, msg_type, node_id, box_id, term, pa
     # Ethernet header (14 bytes)
     frame = dst_mac + src_mac + struct.pack("!H", ethertype)
     # Oracle protocol header (10 bytes)
-    frame += struct.pack("<BBBBIN", ORACLE_PROTOCOL_VERSION, msg_type,
+    frame += struct.pack("<BBBBIH", ORACLE_PROTOCOL_VERSION, msg_type,
                          node_id, box_id, term, len(payload))
     # Payload
     frame += payload

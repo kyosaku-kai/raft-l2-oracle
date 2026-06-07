@@ -163,7 +163,7 @@ void health_monitor_process_announce(health_monitor_t *hm,
 
     if (hm->transport) {
         hm->transport->send(hm->transport, src_node,
-                            ETHERTYPE_HEARTBEAT, MSG_NODE_ANNOUNCE_ACK,
+                            ETHERTYPE_HEARTBEAT, MSG_NODE_ANNOUNCE_ACK, 0,
                             &ack, sizeof(ack));
     }
 }
