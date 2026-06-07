@@ -12,6 +12,13 @@ extern UART_HandleTypeDef huart3;
 int _write(int fd, char *ptr, int len)
 {
     (void)fd;
-    HAL_UART_Transmit(&huart3, (uint8_t *)ptr, (uint16_t)len, HAL_MAX_DELAY);
+    /* Direct register polling - bypasses HAL state machine and HAL_GetTick
+     * to avoid issues with HAL timebase (TIM6) interaction with FreeRTOS. */
+    USART_TypeDef *uart = huart3.Instance;
+    for (int i = 0; i < len; i++) {
+        while (!(uart->SR & USART_SR_TXE))
+            ;  /* wait for TX empty */
+        uart->DR = (uint8_t)ptr[i];
+    }
     return len;
 }

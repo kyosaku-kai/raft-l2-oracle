@@ -112,7 +112,18 @@ cmd_uart_timed() {
     info "Capturing UART for ${duration}s to $logfile"
     stty -F "$uart_dev" 115200 cs8 -cstopb -parenb raw -echo
 
-    timeout "$duration" cat "$uart_dev" | tee "$logfile" || true
+    # Start UART capture in background, then reset board so we catch boot messages
+    timeout "$duration" cat "$uart_dev" > "$logfile" &
+    local cat_pid=$!
+    sleep 1
+
+    # Reset the board via OpenOCD to capture boot output from the start
+    info "Resetting board to capture boot messages..."
+    openocd -f interface/stlink.cfg -f target/stm32f2x.cfg \
+        -c "init; reset run; shutdown" 2>/dev/null || warn "Board reset via OpenOCD failed"
+
+    # Wait for capture to finish, tailing the log for live output
+    tail -f "$logfile" --pid=$cat_pid 2>/dev/null || wait $cat_pid || true
 
     echo ""
     echo "=========================================="

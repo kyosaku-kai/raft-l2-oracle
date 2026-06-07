@@ -31,6 +31,28 @@
 
 UART_HandleTypeDef huart3;
 
+/* --- Stub transport (used when Ethernet init fails) --- */
+
+static int stub_send(raft_transport_t *t, uint8_t dst, uint16_t etype,
+                     raft_msg_type_t type, const void *p, size_t len) {
+    (void)t; (void)dst; (void)etype; (void)type; (void)p; (void)len;
+    return -1;
+}
+static int stub_recv(raft_transport_t *t, uint16_t *etype,
+                     raft_msg_type_t *type, uint8_t *src,
+                     void *p, size_t max, uint32_t tmo) {
+    (void)t; (void)etype; (void)type; (void)src; (void)p; (void)max; (void)tmo;
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    return 0;
+}
+static uint64_t stub_now_ms(raft_transport_t *t) {
+    (void)t;
+    return (uint64_t)xTaskGetTickCount();
+}
+static raft_transport_t g_stub_transport = {
+    .send = stub_send, .recv = stub_recv, .now_ms = stub_now_ms
+};
+
 /* --- Shared state --- */
 
 static raft_transport_t *g_transport;
@@ -278,6 +300,7 @@ static void vMonitorTask(void *pvParameters)
 {
     (void)pvParameters;
     TickType_t xLastWakeTime = xTaskGetTickCount();
+    printf("monitor: task started\r\n");
 
     for (;;) {
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(5000));
@@ -374,7 +397,8 @@ int main(void)
     if (g_transport) {
         printf("ETH: init ok, MAC=02:CA:FE:01:00:01\r\n");
     } else {
-        printf("ETH: init FAILED (no cable?)\r\n");
+        printf("ETH: init FAILED (no cable?) - using stub transport\r\n");
+        g_transport = &g_stub_transport;
     }
 
     /* Install bare-metal allocators before any raft calls */
@@ -387,8 +411,8 @@ int main(void)
     if (oracle_rc == 0) {
         oracle_add_node(&g_oracle_ctx, 1, 1); /* self */
         size_t heap_after = xPortGetFreeHeapSize();
-        printf("raft: init ok, heap delta=%u bytes\r\n",
-               (unsigned)(heap_before - heap_after));
+        printf("raft: init ok, heap used=%d bytes\r\n",
+               (int)(heap_before - heap_after));
         printf("raft: heap free=%u min-ever=%u\r\n",
                (unsigned)heap_after,
                (unsigned)xPortGetMinimumEverFreeHeapSize());
@@ -416,7 +440,7 @@ int main(void)
     xTaskCreate(vEthRxTask,   "eth_rx",  512,  NULL, 4, &h_eth_rx);   /* 2 KB */
     xTaskCreate(vRaftTask,    "raft",    1024, NULL, 3, &h_raft);      /* 4 KB */
     xTaskCreate(vHealthTask,  "health",  512,  NULL, 2, &h_health);    /* 2 KB */
-    xTaskCreate(vMonitorTask, "monitor", 256,  NULL, 1, &h_monitor);   /* 1 KB */
+    xTaskCreate(vMonitorTask, "monitor", 512,  NULL, 1, &h_monitor);   /* 2 KB */
 
     /* Create raft periodic timer */
     raft_timer = xTimerCreate("raft_tmr", pdMS_TO_TICKS(ORACLE_TICK_MS),
