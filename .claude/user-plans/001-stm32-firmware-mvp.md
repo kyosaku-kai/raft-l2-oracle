@@ -23,7 +23,7 @@
 | T7   | TASK:COMPLETE | Adapt raft library for bare-metal (heap functions, log pre-allocation) |
 | T8   | TASK:COMPLETE | Wire up FreeRTOS tasks (eth_rx, raft, health, timer) |
 | T9   | TASK:COMPLETE | Implement health monitoring state machine |
-| T10  | TASK:PENDING | Flash, boot, and verify single-node Raft on hardware (v0.8) |
+| T10  | TASK:IN_PROGRESS | Flash, boot, and verify single-node Raft on hardware (v0.8) |
 | T11  | TASK:PENDING | Multi-node consensus on hardware (v0.9) |
 | T12  | TASK:COMPLETE | IDE support files and colleague onboarding documentation |
 
