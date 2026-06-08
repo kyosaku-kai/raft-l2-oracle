@@ -43,9 +43,16 @@ typedef struct {
  * Compute node IDs start at 101 (matching oracle-agent ORACLE_NODE_ID).
  */
 
+/*
+ * Cluster size: override with cmake -DCLUSTER_NODES=1 for single-board testing.
+ * Default: 3 (full cluster). With CLUSTER_NODES=1, only self is added to raft —
+ * single-node quorum means immediate leader election without peers.
+ */
+#ifndef ORACLE_NUM_CLUSTER_NODES
 #define ORACLE_NUM_CLUSTER_NODES 3
+#endif
 
-static const oracle_peer_t oracle_cluster_peers[ORACLE_NUM_CLUSTER_NODES] = {
+static const oracle_peer_t oracle_cluster_peers[] = {
     { .node_id = 1, .box_id = 1, .mac = { 0x02, 0xCA, 0xFE, 0x01, 0x00, 0x01 } },
     { .node_id = 2, .box_id = 1, .mac = { 0x02, 0xCA, 0xFE, 0x01, 0x00, 0x02 } },
     { .node_id = 3, .box_id = 1, .mac = { 0x02, 0xCA, 0xFE, 0x01, 0x00, 0x03 } },

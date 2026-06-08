@@ -9,12 +9,18 @@ if(NOT DEFINED NODE_ID)
     set(NODE_ID 1)
 endif()
 
+# Cluster size: cmake -DCLUSTER_NODES=1 for single-board testing (default: 3)
+if(NOT DEFINED CLUSTER_NODES)
+    set(CLUSTER_NODES 3)
+endif()
+
 # STM32F2 defines
 add_compile_definitions(
     STM32F207xx
     USE_HAL_DRIVER
     ORACLE_THIS_NODE_ID=${NODE_ID}
     ORACLE_THIS_BOX_ID=1
+    ORACLE_NUM_CLUSTER_NODES=${CLUSTER_NODES}
 )
 
 # --- FreeRTOS-Kernel (native CMake integration) ---
