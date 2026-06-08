@@ -204,6 +204,12 @@ void health_monitor_tick(health_monitor_t *hm, uint32_t now_ms)
         case NODE_SUSPECT:
             if (now_ms - hm->suspect_since_ms[i] >= DOWN_TIMEOUT_MS) {
                 if (is_leader(hm)) {
+                    /* Include leader's own observation in corroboration */
+                    oracle_node_ctx_t *ctx = (oracle_node_ctx_t *)hm->oracle;
+                    if (ctx->node_id < ORACLE_MAX_NODES) {
+                        hm->corroboration.status[ctx->node_id][e->node_id] = e->status;
+                        hm->corroboration.updated_ms[ctx->node_id] = now_ms;
+                    }
                     if (corroborated(hm, e->node_id, e->box_id, now_ms)) {
                         propose_transition(hm, i, NODE_DOWN);
                     }

@@ -28,8 +28,10 @@
 
 #define MAX_SIM_NODES 8
 #define SIM_TICK_MS   50
-#define SIM_RUNTIME_S 10
+#define SIM_RUNTIME_S  10
+#define SIM_CHAOS_RUNTIME_S 15
 #define CHAOS_KILL_AT_S 3   /* seconds into sim when chaos kills heartbeats */
+#define CHAOS_LEADER_KILL_S 8 /* seconds into sim when chaos kills leader */
 
 static volatile int g_running = 1;
 static int g_chaos = 0;
@@ -42,6 +44,7 @@ typedef struct {
     uint8_t            node_id;
     int                num_peers;
     uint8_t            peer_ids[MAX_SIM_NODES];
+    volatile int       alive;  /* 0 = stop this node (chaos: leader kill) */
 } sim_node_t;
 
 /* Simulated compute node (sends heartbeats to its local STM32) */
@@ -77,7 +80,8 @@ static void *compute_thread(void *arg)
     ann.node_type = NODE_TYPE_X86;
     memcpy(ann.hostname, "sim", 3);
 
-    cn->transport->send(cn->transport, cn->stm32_node_id,
+    /* Broadcast announce to all STM32 nodes (L2 broadcast on real hardware) */
+    cn->transport->send(cn->transport, 0xFF,
                         ETHERTYPE_HEARTBEAT, MSG_NODE_ANNOUNCE, 0,
                         &ann, sizeof(ann));
 
@@ -93,7 +97,11 @@ static void *compute_thread(void *arg)
         hb.seq = seq++;
         hb.load_pct = 150; /* 15.0% simulated load */
 
-        cn->transport->send(cn->transport, cn->stm32_node_id,
+        /* Broadcast to ALL STM32 nodes (matches L2 broadcast on real hardware).
+         * On a flat Ethernet bridge, heartbeats from any compute node reach
+         * every STM32, so all nodes can observe the heartbeat and participate
+         * in corroboration. */
+        cn->transport->send(cn->transport, 0xFF,
                             ETHERTYPE_HEARTBEAT, MSG_NODE_HEARTBEAT, 0,
                             &hb, sizeof(hb));
 
@@ -146,7 +154,7 @@ static void *node_thread(void *arg)
     uint64_t last_status = last_tick;
     uint64_t last_health_tick = last_tick;
 
-    while (g_running) {
+    while (g_running && sn->alive) {
         uint64_t now_val = ctx->transport->now_ms(ctx->transport);
 
         /* Drain inbound messages (non-blocking) */
@@ -215,11 +223,11 @@ static void *node_thread(void *arg)
 
             raft_node_id_t leader = raft_get_current_leader(ctx->raft);
 
-            printf("[node %d] state=%s term=%ld leader=%d commit_idx=%ld",
+            raft_index_t ci = raft_get_commit_idx(ctx->raft);
+            printf("[node %d] state=%s term=%ld leader=%d commit=%ld",
                    sn->node_id, state_str,
                    raft_get_current_term(ctx->raft),
-                   (int)leader,
-                   raft_get_commit_idx(ctx->raft));
+                   (int)leader, ci);
 
             /* Print health table */
             uint8_t n_health;
@@ -271,16 +279,20 @@ int main(int argc, char *argv[])
     }
 
     printf("=== raft-l2-oracle POSIX simulator ===\n");
+    int runtime = g_chaos ? SIM_CHAOS_RUNTIME_S : SIM_RUNTIME_S;
     printf("Nodes: %d, tick: %dms, runtime: %ds%s\n\n",
-           g_num_nodes, SIM_TICK_MS, SIM_RUNTIME_S,
+           g_num_nodes, SIM_TICK_MS, runtime,
            g_chaos ? ", CHAOS MODE" : "");
 
     signal(SIGINT, sigint_handler);
 
     /* Create transports (must be done before threads to bind ports) */
+    uint8_t all_node_ids[MAX_SIM_NODES];
     for (int i = 0; i < g_num_nodes; i++) {
         uint8_t node_id = (uint8_t)(i + 1);
+        all_node_ids[i] = node_id;
         g_nodes[i].node_id = node_id;
+        g_nodes[i].alive = 1;
         g_nodes[i].transport = sim_transport_create(node_id, node_id);
         if (!g_nodes[i].transport) {
             fprintf(stderr, "Failed to create transport for node %d\n", node_id);
@@ -297,6 +309,9 @@ int main(int argc, char *argv[])
         }
     }
 
+    /* Register broadcast peers so dst_node=0xFF reaches all nodes */
+    sim_transport_set_broadcast_peers(all_node_ids, g_num_nodes);
+
     /* Launch node threads */
     for (int i = 0; i < g_num_nodes; i++) {
         if (pthread_create(&g_nodes[i].thread, NULL, node_thread,
@@ -312,12 +327,19 @@ int main(int argc, char *argv[])
 
     /* Create simulated compute node transports and threads.
      * Each STM32 node gets one simulated compute node.
-     * Compute nodes use node IDs 100+i to avoid collision with STM32 IDs. */
+     * Compute nodes use node IDs 100+i to avoid collision with STM32 IDs.
+     * Each compute gets its OWN transport so src_node in wire header
+     * correctly identifies the compute node (matching real hardware where
+     * the compute node's MAC identifies it). */
     for (int i = 0; i < g_num_nodes; i++) {
         uint8_t compute_id = (uint8_t)(100 + i + 1);
         g_computes[i].compute_node_id = compute_id;
         g_computes[i].stm32_node_id = (uint8_t)(i + 1);
-        g_computes[i].transport = g_nodes[i].transport; /* share transport */
+        g_computes[i].transport = sim_transport_create(compute_id, 1);
+        if (!g_computes[i].transport) {
+            fprintf(stderr, "Failed to create compute transport %d\n", i);
+            continue;
+        }
         g_computes[i].alive = 1;
 
         if (pthread_create(&g_computes[i].thread, NULL, compute_thread,
@@ -327,16 +349,28 @@ int main(int argc, char *argv[])
     }
 
     /* Run simulation */
-    for (int s = 0; s < SIM_RUNTIME_S && g_running; s++) {
+    for (int s = 0; s < runtime && g_running; s++) {
         sleep(1);
 
         /* Chaos injection: kill heartbeats for compute node 0 at CHAOS_KILL_AT_S */
         if (g_chaos && s == CHAOS_KILL_AT_S) {
-            printf("\n!!! CHAOS: killing heartbeats for compute node %d "
-                   "(-> stm32 node %d) !!!\n\n",
-                   g_computes[0].compute_node_id,
-                   g_computes[0].stm32_node_id);
+            printf("\n!!! CHAOS: killing heartbeats for compute node %d !!!\n\n",
+                   g_computes[0].compute_node_id);
             g_computes[0].alive = 0;
+        }
+
+        /* Chaos injection: kill the leader at CHAOS_LEADER_KILL_S */
+        if (g_chaos && s == CHAOS_LEADER_KILL_S) {
+            for (int i = 0; i < g_num_nodes; i++) {
+                if (g_nodes[i].alive &&
+                    raft_is_leader(g_nodes[i].oracle.raft))
+                {
+                    printf("\n!!! CHAOS: killing LEADER node %d !!!\n\n",
+                           g_nodes[i].node_id);
+                    g_nodes[i].alive = 0;
+                    break;
+                }
+            }
         }
     }
     g_running = 0;
@@ -347,6 +381,7 @@ int main(int argc, char *argv[])
     }
     for (int i = 0; i < g_num_nodes; i++) {
         pthread_join(g_computes[i].thread, NULL);
+        sim_transport_destroy(g_computes[i].transport);
     }
 
     /* Join node threads */

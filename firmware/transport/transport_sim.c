@@ -41,6 +41,11 @@ typedef struct {
     uint8_t   box_id;
 } sim_transport_data_t;
 
+/* Broadcast peer registry: all node IDs in the cluster */
+#define SIM_MAX_BROADCAST_PEERS 8
+static uint8_t g_broadcast_peers[SIM_MAX_BROADCAST_PEERS];
+static int     g_n_broadcast_peers = 0;
+
 static uint64_t sim_now_ms(raft_transport_t *t)
 {
     (void)t;
@@ -71,6 +76,22 @@ static int sim_send(raft_transport_t *t, uint8_t dst_node, uint16_t ethertype,
 
     if (len > 0)
         memcpy(buf + sizeof(sim_header_t), payload, len);
+
+    /* Broadcast: send to all peers except self */
+    if (dst_node == 0xFF) {
+        for (int i = 0; i < g_n_broadcast_peers; i++) {
+            if (g_broadcast_peers[i] == sd->node_id)
+                continue;
+            struct sockaddr_in dst_addr;
+            memset(&dst_addr, 0, sizeof(dst_addr));
+            dst_addr.sin_family = AF_INET;
+            dst_addr.sin_port = htons(SIM_BASE_PORT + g_broadcast_peers[i]);
+            dst_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            sendto(sd->sock_fd, buf, sizeof(sim_header_t) + len, 0,
+                   (struct sockaddr *)&dst_addr, sizeof(dst_addr));
+        }
+        return 0;
+    }
 
     struct sockaddr_in dst_addr;
     memset(&dst_addr, 0, sizeof(dst_addr));
@@ -177,4 +198,11 @@ void sim_transport_destroy(raft_transport_t *t)
         free(sd);
     }
     free(t);
+}
+
+void sim_transport_set_broadcast_peers(const uint8_t *node_ids, int n_nodes)
+{
+    g_n_broadcast_peers = (n_nodes > SIM_MAX_BROADCAST_PEERS)
+                          ? SIM_MAX_BROADCAST_PEERS : n_nodes;
+    memcpy(g_broadcast_peers, node_ids, (size_t)g_n_broadcast_peers);
 }

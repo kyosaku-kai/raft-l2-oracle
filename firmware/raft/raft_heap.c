@@ -40,21 +40,18 @@ static void *bare_realloc(void *ptr, size_t size)
      * Minimal realloc: allocate new block, copy old data, free old block.
      * FreeRTOS heap_4 doesn't provide realloc natively.
      *
-     * This is used by raft_add_node (node array growth) and potentially
-     * __ensurecapacity (log doubling). The log doubling path is prevented
-     * by pre-allocating the log to full capacity at init, so in practice
-     * this only handles the small node array reallocations.
+     * The only caller is raft_add_node() which grows the nodes pointer
+     * array by one element each time:
+     *   realloc(ptr, sizeof(void*) * (num_nodes + 1))
+     * So old_size = size - sizeof(void*), except for the first call
+     * where ptr is NULL (handled by the if-guard).
      */
     void *new_ptr = pvPortMalloc(size);
     if (!new_ptr)
         return NULL;
     if (ptr) {
-        /* We don't know the old block size (FreeRTOS doesn't expose it).
-         * Copy `size` bytes - may overread the old block by a few bytes,
-         * but this is safe: FreeRTOS heap_4 blocks are word-aligned, and
-         * ARM Cortex-M3 won't fault on valid heap addresses. The caller
-         * (raft_add_node) overwrites the new slot immediately after. */
-        memcpy(new_ptr, ptr, size);
+        size_t old_size = (size > sizeof(void*)) ? size - sizeof(void*) : 0;
+        memcpy(new_ptr, ptr, old_size);
         vPortFree(ptr);
     }
     return new_ptr;

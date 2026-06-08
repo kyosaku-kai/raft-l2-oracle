@@ -25,19 +25,13 @@
 /* Forward declaration to avoid circular dependency with raft_oracle.h */
 struct oracle_node_ctx;
 
-/* --- Node health states --- */
+/* --- Node health states (values from wire_format.h) --- */
 
 typedef enum {
-    NODE_UP      = 0,
-    NODE_SUSPECT = 1,
-    NODE_DOWN    = 2,
+    NODE_UP      = NODE_STATUS_UP,
+    NODE_SUSPECT = NODE_STATUS_SUSPECT,
+    NODE_DOWN    = NODE_STATUS_DOWN,
 } node_status_t;
-
-typedef enum {
-    NODE_TYPE_JETSON = 1,
-    NODE_TYPE_X86    = 2,
-    NODE_TYPE_STM32  = 3,
-} node_type_t;
 
 /* --- Timing constants --- */
 

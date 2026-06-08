@@ -14,6 +14,7 @@
 
 #include "transport_eth.h"
 #include "../protocol/wire_format.h"
+#include "../config/node_config.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -150,12 +151,25 @@ static uint64_t eth_now_ms(raft_transport_t *t)
 
 /* --- Transport interface: send --- */
 
+/** Look up a peer's MAC by node_id. Returns broadcast MAC for 0xFF or unknown. */
+static const uint8_t *peer_mac_for(uint8_t node_id)
+{
+    if (node_id == 0xFF)
+        return broadcast_mac;
+    for (int i = 0; i < ORACLE_NUM_CLUSTER_NODES; i++) {
+        if (oracle_cluster_peers[i].node_id == node_id)
+            return oracle_cluster_peers[i].mac;
+    }
+    /* Unknown peer — broadcast as fallback (compute nodes, etc.) */
+    return broadcast_mac;
+}
+
 static int eth_send(raft_transport_t *t, uint8_t dst_node, uint16_t ethertype,
                     raft_msg_type_t type, uint32_t term,
                     const void *payload, size_t len)
 {
-    (void)dst_node; /* broadcast for T6, unicast table added in T8 */
     eth_transport_data_t *ed = (eth_transport_data_t *)t->impl_data;
+    const uint8_t *dst_mac = peer_mac_for(dst_node);
 
     if (len > ORACLE_MAX_PAYLOAD_V1)
         return -1;
@@ -176,7 +190,7 @@ static int eth_send(raft_transport_t *t, uint8_t dst_node, uint16_t ethertype,
     uint8_t *buf = (uint8_t *)ed->heth.TxDesc->Buffer1Addr;
     oracle_frame_header_t *hdr = (oracle_frame_header_t *)buf;
 
-    oracle_frame_init(hdr, broadcast_mac, ed->src_mac, ethertype,
+    oracle_frame_init(hdr, dst_mac, ed->src_mac, ethertype,
                       (uint8_t)type, ed->node_id, ed->box_id, term, (uint16_t)len);
 
     if (len > 0)

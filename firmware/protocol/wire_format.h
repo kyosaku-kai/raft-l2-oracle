@@ -38,6 +38,18 @@
     (mac)[5] = 0x01;        \
 } while (0)
 
+/* --- Node Status (wire values: payload_health_update_t, node_health_wire_t) --- */
+
+#define NODE_STATUS_UP      0
+#define NODE_STATUS_SUSPECT  1
+#define NODE_STATUS_DOWN     2
+
+/* --- Node Types (wire value: node_health_wire_t.node_type, payload_node_announce_t.node_type) --- */
+
+#define NODE_TYPE_JETSON  1
+#define NODE_TYPE_X86     2
+#define NODE_TYPE_STM32   3
+
 /* --- Message Types --- */
 
 typedef enum {

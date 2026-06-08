@@ -4,7 +4,7 @@
  * Task layout (design doc Section 6):
  *   eth_rx_task  (pri 4, 2KB) - demux RX frames by EtherType into queues
  *   raft_task    (pri 3, 4KB) - drain raft_inbox, call oracle_dispatch + periodic
- *   health_task  (pri 2, 2KB) - drain hb_inbox (stub - real logic in T9)
+ *   health_task  (pri 2, 2KB) - drain hb_inbox, drive health state machine
  *   monitor_task (pri 1, 1KB) - periodic stats (HWM, queue depths, heap)
  *
  * Queues:

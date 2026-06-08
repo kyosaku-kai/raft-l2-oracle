@@ -20,6 +20,7 @@ add_library(raft_lib STATIC
     ${RAFT_DIR}/src/raft_log.c
 )
 target_include_directories(raft_lib PUBLIC ${RAFT_DIR}/include)
+target_compile_definitions(raft_lib PRIVATE RAFT_LOG_INITIAL_CAPACITY=1500)
 target_compile_options(raft_lib PRIVATE -Wall -Wextra -g -O2 -Wno-unused-parameter)
 
 # Oracle integration + simulator (our code, strict warnings)

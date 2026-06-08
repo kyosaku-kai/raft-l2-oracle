@@ -370,6 +370,14 @@
 - `sim_main.c`: calls broadcast in status loop (leader sends, followers no-op)
 - Sim builds clean, 3-node chaos test passes (election + DOWN detection)
 
+**Session 4 sim improvements** (2026-06-07):
+- Sim transport: broadcast support (dst_node=0xFF sends to all registered peers)
+- Compute nodes: own transport with correct src_node_id (was sharing STM32 transport)
+- All STM32 nodes now see ALL compute node heartbeats (matches real L2 bridge behavior)
+- Chaos test now shows Raft-replicated health transitions: `commit=2`, all nodes agree `n101=DOWN`
+- Added leader kill chaos at t=8s: leader dies, re-election within 1s, health state preserved
+- CMake toolchain: `find_program` for objcopy/objdump/size (fixes builds outside nix develop)
+
 ---
 
 ### T11: Multi-node consensus on hardware (v0.9)
