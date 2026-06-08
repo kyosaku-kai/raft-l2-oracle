@@ -70,9 +70,15 @@ The firmware (design doc milestones v0.7 and v0.8-in-progress) includes a workin
 - `tools/heartbeat_sender.py` - simulates compute node heartbeats for testing
 - `tools/verify_t10.sh` - orchestrates hardware verification (build, flash, UART capture, sniffer)
 
+**Hardware verification (T10, partially complete):**
+- Board boots to FreeRTOS in <1s, Raft state = LEADER (single-node trivial quorum)
+- Heap usage: 73KB used / 29KB free (within 128KB budget)
+- ETH PHY link up confirmed (LAN8742A auto-negotiation, 100Mbps full-duplex)
+- Stack watermarks healthy, no overflow after 60s continuous run
+- **Pending**: ETH TX/RX on wire (requires physical access to CRS326 bridge)
+
 **What does not exist yet:**
-- Hardware verification (T10 - pending Nucleo-F207ZG USB passthrough)
-- Multi-node consensus on hardware (T11)
+- Multi-node consensus on hardware (T11, requires 3 Nucleo boards)
 - Oracle-agent host daemon (v0.10)
 - k3s fencing integration (v0.11)
 
@@ -129,6 +135,8 @@ raft-l2-oracle/
 
 ## Building and running
 
+> **New here?** See [`docs/QUICKSTART.md`](docs/QUICKSTART.md) for a 5-minute setup guide.
+
 Requires Nix with flakes enabled.
 
 ### POSIX simulator
@@ -150,10 +158,38 @@ Nodes: 3, tick: 50ms, runtime: 10s
 [node 1] started (port 5001)
 [node 2] started (port 5002)
 [node 3] started (port 5003)
-[node 1] state=LEADER term=1 leader=1 commit_idx=0
-[node 2] state=FOLLOWER term=0 leader=1 commit_idx=0
-[node 3] state=FOLLOWER term=0 leader=1 commit_idx=0
+[node 2] state=LEADER term=1 leader=2 commit=0 | health: n101=UP n102=UP n103=UP
+[node 1] state=FOLLOWER term=1 leader=2 commit=0 | health: n101=UP n102=UP n103=UP
+[node 3] state=FOLLOWER term=1 leader=2 commit=0 | health: n101=UP n102=UP n103=UP
 ```
+
+### Chaos mode (failure detection + leader kill)
+
+```bash
+./raft_sim 3 --chaos              # 15-second run with injected failures
+```
+
+Demonstrates the full failure detection story:
+
+```
+[node 2] state=LEADER term=1 leader=2 commit=0 | health: n101=UP n102=UP n103=UP
+
+!!! CHAOS: killing heartbeats for compute node 101 !!!
+
+health_table: node 101 committed 0 -> 1 (term 1)    # SUSPECT via Raft consensus
+health_table: node 101 committed 1 -> 2 (term 1)    # DOWN via Raft consensus
+[node 2] state=LEADER term=1 leader=2 commit=2 | health: n101=DOWN n102=UP n103=UP
+[node 1] state=FOLLOWER term=1 leader=2 commit=2 | health: n101=DOWN n102=UP n103=UP
+
+!!! CHAOS: killing LEADER node 2 !!!
+
+[node 1] state=LEADER term=2 leader=1 commit=2 | health: n101=DOWN n102=UP n103=UP
+[node 3] state=FOLLOWER term=2 leader=1 commit=2 | health: n101=DOWN n102=UP n103=UP
+```
+
+Key observations:
+- **t=3s**: Compute 101 heartbeats stop → all nodes agree on DOWN (`commit=2`)
+- **t=8s**: Leader killed → new election in <1s, health state preserved across terms
 
 ### STM32 firmware
 

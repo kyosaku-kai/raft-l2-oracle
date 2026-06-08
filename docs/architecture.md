@@ -140,6 +140,13 @@ Three backends exist or are planned:
 
 **New transport backend**: Implement the three functions in `raft_transport_t` and select it at initialization in `main.c`.
 
+## Additional diagrams
+
+- [Raft Message Flow](diagrams/raft-message-flow.md) — sequence diagrams for election, replication, corroboration
+- [Health State Machine](diagrams/health-state-machine.md) — state transitions, timing, decision flow
+- [Wire Protocol Reference](diagrams/wire-protocol.md) — byte-level frame layout, all message types
+- [Network Topology](diagrams/network-topology.md) — physical setup, MAC scheme, frame routing
+
 ## Build system
 
 The project uses CMake with presets:

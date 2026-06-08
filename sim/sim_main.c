@@ -222,30 +222,37 @@ static void *node_thread(void *arg)
                 state_str = "FOLLOWER";
 
             raft_node_id_t leader = raft_get_current_leader(ctx->raft);
-
             raft_index_t ci = raft_get_commit_idx(ctx->raft);
-            printf("[node %d] state=%s term=%ld leader=%d commit=%ld",
-                   sn->node_id, state_str,
-                   raft_get_current_term(ctx->raft),
-                   (int)leader, ci);
 
-            /* Print health table */
+            /* Build entire line in buffer for atomic write (no interleaving) */
+            char line[256];
+            int pos = snprintf(line, sizeof(line),
+                "[node %d] state=%s term=%ld leader=%d commit=%ld",
+                sn->node_id, state_str,
+                raft_get_current_term(ctx->raft),
+                (int)leader, ci);
+
+            /* Append health table */
             uint8_t n_health;
             const node_health_entry_t *tbl =
                 health_monitor_get_table(&sn->health, &n_health);
-            if (n_health > 0) {
-                printf(" | health:");
-                for (uint8_t h = 0; h < n_health; h++) {
+            if (n_health > 0 && pos < (int)sizeof(line) - 1) {
+                pos += snprintf(line + pos, sizeof(line) - pos, " | health:");
+                for (uint8_t h = 0; h < n_health && pos < (int)sizeof(line) - 1; h++) {
                     const char *st = "?";
                     switch (tbl[h].status) {
                     case NODE_UP:      st = "UP";      break;
                     case NODE_SUSPECT: st = "SUSPECT"; break;
                     case NODE_DOWN:    st = "DOWN";    break;
                     }
-                    printf(" n%d=%s", tbl[h].node_id, st);
+                    pos += snprintf(line + pos, sizeof(line) - pos,
+                                    " n%d=%s", tbl[h].node_id, st);
                 }
             }
-            printf("\n");
+            if (pos < (int)sizeof(line) - 1)
+                line[pos++] = '\n';
+            line[pos] = '\0';
+            fputs(line, stdout);
 
             last_status = now_val;
         }
