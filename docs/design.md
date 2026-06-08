@@ -1495,7 +1495,186 @@ graph TD
 
 ---
 
-## Appendix D — willemt/raft Library Reference
+## Appendix D — Hackathon Demo: Nucleo-Only Scope (June 9, 2026)
+
+> **Scope pivot (June 8):** The hackathon demo is narrowed to **Nucleo boards only** — no compute nodes, no oracle-agent, no k3s integration. The goal is Raft consensus running on real hardware, with failures demonstrated by pulling Ethernet cables and pressing reset buttons. Serial consoles on laptops show state changes in real time.
+
+### D.1 What We're Demonstrating
+
+Three or four STM32 Nucleo-F207ZG boards running the Raft consensus algorithm over raw L2 Ethernet, connected through any commodity unmanaged switch. Each board elects a leader, replicates log entries, and detects peer failures when boards lose network connectivity or are reset. The audience sees:
+
+1. **Leader election** — boards start up, hold an election, one becomes leader (visible on serial console)
+2. **Steady-state consensus** — leader sends AppendEntries keepalives every 50ms, followers ACK
+3. **Node failure detection** — pull a cable or press reset: remaining nodes detect the loss within ~150-300ms (Raft heartbeat timeout), log the event
+4. **Leader failover** — pull the leader's cable: a new election completes in <500ms, new leader emerges
+5. **Quorum loss** — pull 2 of 3 cables: surviving node recognizes it has lost quorum, stops asserting
+6. **Recovery** — replug cables: returning nodes rejoin the cluster, catch up on missed log entries
+
+No compute nodes are involved. The STM32s are both the Raft participants **and** the thing being monitored (they monitor each other via Raft heartbeats). The health table tracks STM32 peer status only — no `MSG_NODE_HEARTBEAT` from external hosts.
+
+### D.2 Hardware Setup
+
+| Item | Qty | Notes |
+|---|---|---|
+| STM32 Nucleo-F207ZG | 3-4 | Each flashed with unique `NODE_ID` (1, 2, 3, 4) |
+| Ethernet switch | 1 | Any unmanaged switch with 4+ ports (nothing special) |
+| Cat6 patch cables | 3-4 | Nucleo RJ45 → switch |
+| USB cables (Mini-B) | 3-4 | Nucleo ST-LINK → laptop USB for serial console + power |
+| Laptops / notebooks | 1-3 | Running serial terminals (`minicom`, `screen`, `picocom`) |
+
+One laptop can monitor multiple boards via USB hub. The minimum viable demo is **one laptop + 3 Nucleos + 1 switch**.
+
+### D.3 Demo Topology
+
+```
+  ┌─────────────────────────────────────────────────────┐
+  │              Unmanaged Ethernet Switch               │
+  │   port 1      port 2      port 3      port 4        │
+  └────┬──────────┬──────────┬──────────┬───────────────┘
+       │ RJ45     │ RJ45     │ RJ45     │ RJ45
+  ┌────┴────┐┌────┴────┐┌────┴────┐┌────┴────┐
+  │ Nucleo  ││ Nucleo  ││ Nucleo  ││ Nucleo  │
+  │ Node 1  ││ Node 2  ││ Node 3  ││ Node 4  │
+  │ (LED:G) ││ (LED:G) ││ (LED:G) ││ (LED:G) │
+  └────┬────┘└────┬────┘└────┬────┘└────┬────┘
+       │ USB      │ USB      │ USB      │ USB
+       │          │          │          │
+  ┌────┴──────────┴────┐┌────┴──────────┴────┐
+  │   Laptop A         ││   Laptop B         │
+  │   serial consoles  ││   serial consoles  │
+  │   (nodes 1 & 2)    ││   (nodes 3 & 4)    │
+  └────────────────────┘└────────────────────┘
+```
+
+![Hackathon Demo Topology](diagrams/hackathon-demo-topology.drawio.svg)
+
+### D.4 Steps to Demo-Ready
+
+#### Phase 0: Simulator Validation (contingency / pre-work)
+
+The POSIX simulator (`sim/`) already runs the same Raft + health monitoring code as the firmware, using UDP loopback instead of real Ethernet. It provides a complete software-only demo path:
+
+```bash
+cd sim && mkdir -p build && cd build
+cmake .. && make
+./raft_sim 3           # 3-node clean consensus
+./raft_sim 3 --chaos   # compute kill at t=3s, leader kill at t=8s
+```
+
+**What the simulator already demonstrates:**
+- Leader election and steady-state AppendEntries (same code as firmware)
+- Node failure detection with health state transitions (UP → SUSPECT → DOWN)
+- Leader failover after leader kill (new election within ~1s)
+- Raft-committed health transitions (commit index advances on DOWN)
+
+**Contingency:** If hardware issues block the live demo, the simulator output on a projector demonstrates every algorithm behavior. The audience sees the same state machine, same detection logic, same Raft integration — just on a laptop instead of real boards.
+
+#### Phase 1: Build and Flash Firmware (per board)
+
+Each Nucleo needs firmware built with its unique node ID and the correct cluster size:
+
+```bash
+# For a 3-node cluster:
+nix develop --command bash -c \
+  "cmake --preset firmware -DNODE_ID=1 -DCLUSTER_NODES=3 && cmake --build build/firmware"
+
+# Flash via ST-LINK:
+nix develop --command bash -c \
+  "openocd -f interface/stlink.cfg -f target/stm32f2x.cfg \
+   -c 'program build/firmware/firmware/raft_oracle_node1.hex verify reset exit'"
+
+# Repeat for NODE_ID=2, 3 (and 4 if using 4 boards)
+# Or use: tools/build_all_nodes.sh
+```
+
+**Verification:** Connect serial console (`minicom -D /dev/ttyACM0 -b 115200`), confirm:
+- `[raft] state=FOLLOWER` appears within 1 second of boot
+- If single board on switch: `state=LEADER` after election timeout (~300ms)
+
+#### Phase 2: Connect and Verify Multi-Node
+
+1. Plug all Nucleos into the switch via Ethernet
+2. Power all boards (USB from laptops)
+3. Watch serial consoles — within ~1 second:
+   - One board prints `state=LEADER`
+   - Others print `state=FOLLOWER`
+   - Leader shows `commit=N` advancing as keepalives flow
+
+**What to check:**
+- All boards agree on the same leader (leader ID in status output)
+- Term numbers are consistent across boards
+- No repeated elections (stable leader)
+
+#### Phase 3: Failure Demo Rehearsal
+
+Practice the demo sequence before showtime:
+
+| Demo | Action | What to watch on serial |
+|---|---|---|
+| **Cable pull** | Unplug one follower's Ethernet | Remaining nodes: peer marked unreachable within ~300ms |
+| **Cable replug** | Replug it | Returning node rejoins, catches up log |
+| **Leader kill** | Unplug leader's Ethernet | New election fires, new leader within ~500ms |
+| **Reset button** | Press reset on a Nucleo | Same as cable pull + node reboots and rejoins |
+| **Quorum loss** | Unplug 2 of 3 | Survivor detects quorum loss, stops committing |
+| **Full recovery** | Replug all | Election fires, cluster reconverges |
+
+#### Phase 4: Demo Day Script
+
+1. **"Here's the system"** — show the physical setup: boards, switch, cables, serial consoles
+2. **"They just elected a leader"** — point at serial output showing LEADER/FOLLOWER states
+3. **"Watch what happens when a node fails"** — pull a cable, audience sees detection in <300ms
+4. **"Now let's kill the leader"** — pull the leader's cable, new leader elected in <500ms
+5. **"What if we lose quorum?"** — pull another cable, survivor stops asserting
+6. **"And recovery"** — replug cables, cluster heals itself
+
+### D.5 What's Explicitly Out of Scope
+
+These are all part of the full design (Sections 7-8) but are **not** in the hackathon demo:
+
+- Compute node heartbeats (`MSG_NODE_HEARTBEAT` from hosts)
+- oracle-agent daemon on compute nodes
+- k3s/etcd integration (`etcdctl member remove`, `kubectl cordon`)
+- Health event notifications to hosts (`MSG_HEALTH_UPDATE`, `MSG_FAILURE_EVENT`)
+- Cross-check safety interlocks
+- Fencing taxonomy execution
+- Prometheus metrics
+
+The hackathon demo proves **the core**: Raft consensus on real embedded hardware with real Ethernet, leader election, failure detection, and recovery. Everything else layers on top of this working foundation.
+
+### D.6 Success Criteria (Hackathon-Scoped)
+
+| Metric | Target |
+|---|---|
+| Leader election from cold boot | <1 second |
+| Stable leader (no flapping) in steady state | Yes |
+| Peer failure detection (cable pull → log message) | <500ms |
+| Leader failover (leader cable pull → new leader) | <1 second |
+| Correct quorum loss behavior (2/3 down → stop committing) | Yes |
+| Recovery after cable replug | Rejoin within ~2 seconds |
+| Runs continuously without crash for 10+ minutes | Yes |
+
+### D.7 Known Firmware Status (as of June 8, 2026)
+
+**Working:**
+- Firmware builds and boots on Nucleo-F207ZG in <1 second
+- FreeRTOS tasks running, heap within budget (29KB free)
+- Raft state machine functional (single-node leader election verified)
+- Ethernet TX confirmed on wire — RequestVote (0x88B5) and CLUSTER_STATE (0x88B6) frames observed
+- `CLUSTER_NODES=1` mode for single-board testing
+- Serial console output with raft state, term, leader, commit index, health table
+
+**Needs verification with multiple boards:**
+- Multi-node leader election via real Ethernet (works in simulator)
+- Ethernet RX path processing Raft messages from peers
+- Peer failure detection via Raft heartbeat timeout
+- Log replication across boards
+- Recovery after cable replug or board reset
+
+The simulator has validated all of these behaviors. The remaining work is confirming they work over real Ethernet between real boards — which is exactly what the demo demonstrates.
+
+---
+
+## Appendix E — willemt/raft Library Reference
 
 - **Repository**: https://github.com/willemt/raft
 - **Key files**: `src/raft_server.c` (1435 lines — core algorithm), `src/raft_log.c` (315 lines — ring buffer), `src/raft_node.c` (192 lines), `src/raft_server_properties.c` (269 lines), `include/raft.h` (957 lines — full API), `include/raft_types.h` (type definitions)
