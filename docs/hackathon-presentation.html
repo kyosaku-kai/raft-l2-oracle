@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L2 Oracle — Hackathon 2026</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0a0e17;
+    --bg-card: #111827;
+    --bg-card-hover: #1a2332;
+    --border: #1e293b;
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --accent: #38bdf8;
+    --accent-glow: rgba(56, 189, 248, 0.15);
+    --green: #34d399;
+    --green-glow: rgba(52, 211, 153, 0.15);
+    --amber: #fbbf24;
+    --red: #f87171;
+    --purple: #a78bfa;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow-x: hidden;
+  }
+
+  /* ── Navigation ── */
+  nav {
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 100;
+    background: rgba(10, 14, 23, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+  }
+  nav .logo {
+    font-weight: 800;
+    font-size: 1.1rem;
+    letter-spacing: -0.02em;
+    color: var(--accent);
+  }
+  nav .nav-links { display: flex; gap: 0.25rem; }
+  nav .nav-links a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    transition: all 0.2s;
+  }
+  nav .nav-links a:hover, nav .nav-links a.active {
+    color: var(--text);
+    background: var(--accent-glow);
+  }
+
+  /* ── Sections ── */
+  section {
+    min-height: 100vh;
+    padding: 7rem 2rem 4rem;
+    max-width: 1100px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    text-align: center;
+    position: relative;
+  }
+  .hero .tag {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    background: var(--accent-glow);
+    padding: 0.35rem 1rem;
+    border-radius: 100px;
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    margin-bottom: 1.5rem;
+  }
+  .hero h1 {
+    font-size: clamp(2.5rem, 5vw, 4rem);
+    font-weight: 900;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    margin-bottom: 1.25rem;
+  }
+  .hero h1 .highlight {
+    background: linear-gradient(135deg, var(--accent), var(--green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero h1 .highlight#hidden-text {
+    opacity: 0.12;
+    transition: opacity 0.6s ease, text-shadow 0.6s ease, filter 0.6s ease;
+    cursor: default;
+  }
+  .hero h1 .highlight#hidden-text:hover {
+    opacity: 1;
+    filter: brightness(1.3);
+    text-shadow: 0 0 20px rgba(56, 189, 248, 0.5), 0 0 40px rgba(52, 211, 153, 0.3);
+  }
+  .hero .subtitle {
+    font-size: 1.2rem;
+    color: var(--text-dim);
+    max-width: 850px;
+    margin: 0 auto 2.5rem;
+    line-height: 1.6;
+  }
+  .hero .stats-row {
+    display: flex;
+    justify-content: center;
+    gap: 3rem;
+    flex-wrap: wrap;
+  }
+  .hero .stat {
+    text-align: center;
+  }
+  .hero .stat .num {
+    font-size: 2.5rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .hero .stat .num.blue { color: var(--accent); }
+  .hero .stat .num.green { color: var(--green); }
+  .hero .stat .num.amber { color: var(--amber); }
+  .hero .stat .label {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-top: 0.25rem;
+    font-weight: 500;
+  }
+
+  /* ── Section Headers ── */
+  .section-header {
+    margin-bottom: 3rem;
+  }
+  .section-header .section-tag {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    margin-bottom: 0.75rem;
+  }
+  .section-header h2 {
+    font-size: 2.25rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+  .section-header p {
+    color: var(--text-dim);
+    font-size: 1.05rem;
+    margin-top: 0.75rem;
+    line-height: 1.6;
+  }
+
+  /* ── Cards ── */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.25rem;
+  }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.75rem;
+    transition: all 0.25s;
+  }
+  .card:hover {
+    background: var(--bg-card-hover);
+    border-color: rgba(56, 189, 248, 0.2);
+    transform: translateY(-2px);
+  }
+  .card .card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+  }
+  .card .card-icon.blue { background: var(--accent-glow); }
+  .card .card-icon.green { background: var(--green-glow); }
+  .card .card-icon.amber { background: rgba(251, 191, 36, 0.15); }
+  .card .card-icon.purple { background: rgba(167, 139, 250, 0.15); }
+  .card h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+  .card p {
+    font-size: 0.875rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  /* ── Donut Charts ── */
+  .chart-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-top: 2rem;
+  }
+  @media (max-width: 700px) {
+    .chart-section { grid-template-columns: 1fr; }
+  }
+  .chart-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+  }
+  .chart-card h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+  }
+  .chart-card .chart-subtitle {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-bottom: 1.5rem;
+  }
+  .donut-container {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    margin: 0 auto 1.5rem;
+  }
+  .donut-container svg { width: 100%; height: 100%; }
+  .donut-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+  }
+  .donut-center .pct {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .donut-center .pct-label {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    font-weight: 500;
+  }
+  .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+    font-size: 0.78rem;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  /* ── Resource Bar ── */
+  .resource-bars {
+    margin-top: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  .resource-bar-item label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
+  .resource-bar-item label span { color: var(--text-dim); font-weight: 400; }
+  .bar-track {
+    height: 32px;
+    background: #1a2332;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    position: relative;
+  }
+  .bar-fill {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding-left: 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: white;
+    white-space: nowrap;
+    transition: width 1.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .bar-fill.used { background: var(--accent); }
+  .bar-fill.oracle { background: var(--green); }
+  .bar-fill.free { background: transparent; }
+  .bar-label-free {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    font-weight: 500;
+  }
+
+  /* ── Timeline ── */
+  .timeline {
+    position: relative;
+    padding-left: 2rem;
+    margin-top: 1rem;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--border);
+  }
+  .timeline-item {
+    position: relative;
+    padding-bottom: 2rem;
+  }
+  .timeline-item:last-child { padding-bottom: 0; }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -2rem;
+    top: 0.35rem;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: var(--bg);
+    transform: translateX(-4px);
+  }
+  .timeline-item.done::before {
+    background: var(--green);
+    border-color: var(--green);
+  }
+  .timeline-item h4 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+  }
+  .timeline-item p {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .timeline-item .date {
+    font-size: 0.7rem;
+    color: var(--accent);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Code Block ── */
+  .code-block {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    line-height: 1.7;
+    overflow-x: auto;
+    margin-top: 1.5rem;
+    color: var(--text-dim);
+  }
+  .code-block .kw { color: var(--purple); }
+  .code-block .fn { color: var(--accent); }
+  .code-block .str { color: var(--green); }
+  .code-block .cm { color: #4b5563; }
+  .code-block .num { color: var(--amber); }
+
+  /* ── Demo Section ── */
+  .demo-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 3px;
+    background: var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    aspect-ratio: 16/10;
+    margin-top: 2rem;
+  }
+  .demo-quad {
+    background: var(--bg-card);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    position: relative;
+  }
+  .demo-quad .quad-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin-bottom: 0.5rem;
+  }
+  .demo-quad .quad-content {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--green);
+    line-height: 1.6;
+    text-align: left;
+    max-width: 100%;
+  }
+  .demo-quad .quad-content .log-leader { color: var(--accent); }
+  .demo-quad .quad-content .log-warn { color: var(--amber); }
+  .demo-quad .quad-content .log-fail { color: var(--red); }
+  .demo-quad.video-quad {
+    background: #0d1117;
+  }
+  .demo-quad.video-quad .quad-content {
+    color: var(--text-dim);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.85rem;
+    text-align: center;
+  }
+
+  /* ── Links ── */
+  a.doc-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+    border-bottom: 1px solid rgba(56, 189, 248, 0.3);
+    transition: border-color 0.2s;
+  }
+  a.doc-link:hover {
+    border-color: var(--accent);
+  }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 3rem 2rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 0.8rem;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+
+  /* ── Animations ── */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ── Tooltip on bars ── */
+  .bar-tooltip {
+    position: absolute;
+    background: #1e293b;
+    color: var(--text);
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 10;
+    white-space: nowrap;
+    top: -2rem;
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="logo">L2 Oracle</span>
+  <div class="nav-links">
+    <a href="#hero" class="active">Overview</a>
+    <a href="#problem">Problem</a>
+    <a href="#solution">Solution</a>
+    <a href="#demo">Demo</a>
+    <a href="#footprint">Footprint</a>
+    <a href="#capacity">Capacity</a>
+    <a href="#docs">Docs</a>
+  </div>
+</nav>
+
+<!-- ═══════ HERO ═══════ -->
+<section id="hero" class="hero">
+  <div class="fade-in">
+    <span class="tag">Hackathon 2026</span>
+    <h1>Consensus on a <span class="highlight" id="hidden-text">Hidden Processor</span></h1>
+    <p class="subtitle">
+      A Cortex-M3 service processor (SCPU) sits on every switch SoC in every box in our platform.
+      We proved it can run distributed Raft consensus for sub-100ms failure detection - adding just 12 KB of code to a core with 126 KB of SRAM, leaving the vast majority of its resources free for future applications.
+    </p>
+    <div class="stats-row">
+      <div class="stat">
+        <div class="num blue">12 KB</div>
+        <div class="label">Code we add</div>
+      </div>
+      <div class="stat">
+        <div class="num green">~84 KB</div>
+        <div class="label">SRAM still free per core</div>
+      </div>
+      <div class="stat">
+        <div class="num amber">&lt;100 ms</div>
+        <div class="label">Failure detection</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ PROBLEM ═══════ -->
+<section id="problem">
+  <div class="fade-in">
+    <div class="section-header">
+      <div class="section-tag">The Problem</div>
+      <h2>Software monitors die with the node they watch</h2>
+      <p>
+        Traditional cluster HA relies on software-only failure detection running on the same
+        processors being monitored. When a node crashes, its failure monitor dies with it.
+        Detection falls back to remote timeouts - 40+ seconds for k3s/etcd by default.
+      </p>
+    </div>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon amber">&#9888;</div>
+        <h3>Shared failure domain</h3>
+        <p>A kernel panic, OOM kill, or hardware fault takes out both the application and its health monitor simultaneously. The monitor dies with the node it watches.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon amber">&#9203;</div>
+        <h3>Slow detection</h3>
+        <p>k3s default node-monitor-grace-period is 40 seconds. Etcd leader election adds more. Total recovery can exceed 2 minutes.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon amber">&#128270;</div>
+        <h3>Low-fidelity detection</h3>
+        <p>Remote health checks can only say "I can't reach it." They can't distinguish a crashed node from a congested link - leading to false positives and unnecessary failovers.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon amber">&#128736;</div>
+        <h3>Software complexity</h3>
+        <p>Implementing reliable failure detection in software means timeouts, retries, quorum logic, and state machines - all running on the same overloaded host CPUs you're trying to monitor.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ SOLUTION ═══════ -->
+<section id="solution">
+  <div class="fade-in">
+    <div class="section-header">
+      <div class="section-tag">The Solution</div>
+      <h2>Raft consensus on the Switch SCPU</h2>
+      <p>
+        Every switch SoC in our platform has independent Cortex-M3 service processor cores (SCPUs) with their own voltage rail, firmware, and Ethernet access.
+        Run a lightweight Raft cluster across these physically isolated cores.
+        They communicate over raw L2 Ethernet - no IP stack, no TCP, just custom EtherType
+        frames at wire speed. Failure detection in under 100ms, consensus-backed.
+      </p>
+    </div>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon blue">&#9741;</div>
+        <h3>Isolated failure domain</h3>
+        <p>Separate silicon, separate voltage rail, separate firmware. The monitor physically cannot crash with the host it watches.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon green">&#9889;</div>
+        <h3>L2 wire-speed detection</h3>
+        <p>Raw Ethernet II frames with custom EtherTypes (0x88B5 Raft, 0x88B6 Health, 0x88B7 Heartbeat). No protocol stack overhead.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon purple">&#9878;</div>
+        <h3>Consensus, not just pings</h3>
+        <p>Raft voting ensures "the majority agrees node X is down" - not just "I can't see it." Eliminates false positives from transient link issues.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon blue">&#9881;</div>
+        <h3>Purely additive</h3>
+        <p>If the oracle fails, k3s falls back to its normal (slower) detection. The oracle is never in the critical path for cluster correctness.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ DEMO ═══════ -->
+<section id="demo">
+  <div class="fade-in">
+    <div class="section-header">
+      <div class="section-tag">Live Demo</div>
+      <h2>Three boards, one switch, zero configuration</h2>
+      <p>
+        The demo itself is deliberately simple: three dev boards, a switch, and some Ethernet cables.
+        Raft does what Raft is expected to do - nodes elect a leader, detect failures, and recover.
+        The interesting part comes next: how little of the processor this actually costs.
+      </p>
+      <p style="margin-top: 0.75rem;">
+        We chose the <strong>STM32 Nucleo-F207ZG</strong> because it has the exact same
+        <strong>ARM Cortex-M3</strong> core embedded in the switch SoC on our production hardware.
+        Same instruction set, same constraints, same class of resources. The production SCPU SDK
+        runs the same RTOS with the same DMA descriptor-ring model for packet I/O -
+        ~3,400 lines of consensus and protocol code transfer unchanged.
+        See the <a class="doc-link" href="transport-parity-analysis.md">transport parity analysis</a>
+        for the full side-by-side comparison.
+      </p>
+      <p style="margin-top: 0.75rem;">
+        Pull a cable - the remaining nodes detect the failure, elect a new leader, and
+        continue operating. Plug it back in - the node rejoins seamlessly.
+      </p>
+    </div>
+    <div style="margin-top: 2rem; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: #0d1117;">
+      <video controls preload="metadata" style="width: 100%; display: block;"
+             poster="">
+        <source src="STM32 Cluster Demo.mkv" type="video/x-matroska">
+        <source src="STM32 Cluster Demo.webm" type="video/webm">
+        <source src="STM32 Cluster Demo.mp4" type="video/mp4">
+        <p style="padding: 2rem; text-align: center; color: var(--text-dim);">
+          Your browser does not support embedded video.
+          <a class="doc-link" href="STM32 Cluster Demo.mkv">Download the demo video</a>.
+        </p>
+      </video>
+    </div>
+    <p style="text-align:center;color:var(--text-dim);font-size:0.82rem;margin-top:1rem;">
+      Four-quadrant view: three serial consoles showing real-time Raft state + camera feed of the physical setup.
+    </p>
+  </div>
+</section>
+
+<!-- ═══════ FOOTPRINT ═══════ -->
+<section id="footprint">
+  <div class="fade-in">
+    <div class="section-header">
+      <div class="section-tag">The Key Finding</div>
+      <h2>It barely touches the processor</h2>
+      <p>
+        The production SCPU runs entirely from SRAM - there is no flash. Each core has 126 KB of SRAM, and the existing SCPU SDK firmware occupies ~40 KB, leaving ~84 KB free. Everything we add totals just 12 KB: a 5.7 KB <a class="doc-link" href="https://github.com/timblaktu/raft">Raft library</a> (forked from <a class="doc-link" href="https://github.com/willemt/raft">willemt/raft</a>) plus 6.3 KB of oracle application code. An optimized build drops that further to ~8 KB.
+      </p>
+      <p style="margin-top: 0.75rem;">
+        On our STM32 prototype (which has 1 MB flash + 128 KB SRAM), the complete standalone firmware including FreeRTOS, HAL drivers, debug output, and C library fits in 37 KB. But most of that infrastructure already exists on the production service processor - the meaningful number is the 12 KB delta.
+      </p>
+      <p style="margin-top: 0.75rem;">
+        Most of the effort was not writing code - it was systems integration, bare-metal porting, and wire protocol design. Proving that something <em>fits</em> required building it and measuring every byte.
+      </p>
+    </div>
+
+    <div class="chart-section">
+      <!-- Production CM3 SRAM donut -->
+      <div class="chart-card">
+        <h3>Production SCPU Core SRAM</h3>
+        <div class="chart-subtitle">Oracle delta: ~13.5 KB added to 126 KB per-core SRAM</div>
+        <div class="donut-container">
+          <svg viewBox="0 0 200 200">
+            <!-- Background ring -->
+            <circle cx="100" cy="100" r="80" fill="none" stroke="#1e293b" stroke-width="24"/>
+            <!-- SDK baseline: 40 KB / 126 KB = 31.7% = 159.5 of 502.65 circumference -->
+            <circle cx="100" cy="100" r="80" fill="none" stroke="#334155" stroke-width="24"
+                    stroke-dasharray="159.5 343.15" stroke-dashoffset="125.66" stroke-linecap="butt"/>
+            <!-- Oracle delta: 13.5 KB / 126 KB = 10.7% = 53.8 -->
+            <circle cx="100" cy="100" r="80" fill="none" stroke="var(--green)" stroke-width="24"
+                    stroke-dasharray="53.8 448.85" stroke-dashoffset="-33.84" stroke-linecap="butt"
+                    style="filter: drop-shadow(0 0 6px rgba(52,211,153,0.4));"/>
+          </svg>
+          <div class="donut-center">
+            <div class="pct" style="color:var(--green)">10.7%</div>
+            <div class="pct-label">oracle adds</div>
+          </div>
+        </div>
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#334155"></div> SCPU SDK baseline (~40 KB)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Oracle delta (~13.5 KB)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#1e293b"></div> Free (~72 KB)</div>
+        </div>
+      </div>
+
+      <!-- Code breakdown donut -->
+      <div class="chart-card">
+        <h3>What We Add vs. What's Already There</h3>
+        <div class="chart-subtitle">33.8 KB total - only 12 KB is new</div>
+        <div class="donut-container">
+          <svg viewBox="0 0 200 200">
+            <circle cx="100" cy="100" r="80" fill="none" stroke="#1e293b" stroke-width="24"/>
+            <!-- Oracle app: 18.7% = 94.0 (what we wrote) -->
+            <circle cx="100" cy="100" r="80" fill="none" stroke="var(--green)" stroke-width="24"
+                    stroke-dasharray="94.0 408.65" stroke-dashoffset="125.66" stroke-linecap="butt"/>
+            <!-- Raft lib: 17.0% = 85.5 (what we add — open source) -->
+            <circle cx="100" cy="100" r="80" fill="none" stroke="var(--accent)" stroke-width="24"
+                    stroke-dasharray="85.5 417.15" stroke-dashoffset="31.66" stroke-linecap="butt"/>
+            <!-- FreeRTOS: 26.7% = 134.2 (already on chip) -->
+            <circle cx="100" cy="100" r="80" fill="none" stroke="#334155" stroke-width="24"
+                    stroke-dasharray="134.2 368.45" stroke-dashoffset="-53.84" stroke-linecap="butt"/>
+            <!-- HAL: 19.9% = 100.0 (already on chip) -->
+            <circle cx="100" cy="100" r="80" fill="none" stroke="#2d3748" stroke-width="24"
+                    stroke-dasharray="100.0 402.65" stroke-dashoffset="-188.04" stroke-linecap="butt"/>
+            <!-- C lib + toolchain: 17.3% = 87.0 (already on chip) -->
+            <circle cx="100" cy="100" r="80" fill="none" stroke="#1e293b" stroke-width="24"
+                    stroke-dasharray="87.0 415.65" stroke-dashoffset="-288.04" stroke-linecap="butt"/>
+          </svg>
+          <div class="donut-center">
+            <div class="pct" style="color:var(--green);font-size:1.5rem">12 KB</div>
+            <div class="pct-label">what we add</div>
+          </div>
+        </div>
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Oracle app (6.3 KB) - <strong>new</strong></div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div> Raft lib (5.7 KB) - <strong>new</strong></div>
+          <div class="legend-item"><div class="legend-dot" style="background:#334155"></div> FreeRTOS (9.0 KB) - already on chip</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#2d3748"></div> HAL (6.7 KB) - already on chip</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#1e293b"></div> C lib (5.8 KB) - already on chip</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ CAPACITY ═══════ -->
+<section id="capacity">
+  <div class="fade-in">
+    <div class="section-header">
+      <div class="section-tag">Production Projection</div>
+      <h2>What fits on the target service processor</h2>
+      <p>
+        The production target has 4x Cortex-M3 SCPU cores at 650 MHz, 126 KB SRAM per core (384 KB aggregate, 3 cores user-available). The SCPU SDK baseline firmware occupies ~40 KB, leaving ~84 KB free. Our oracle adds just ~13.5 KB - consuming 10.7% of per-core SRAM and leaving ~72 KB free for future applications. Firmware is loaded into SRAM via PCIe BAR mmap from the host - there is no flash on the CM3.
+      </p>
+      <p style="margin-top: 0.75rem;">
+        <strong>Transport parity:</strong> The production SCPU SDK uses the same RTOS and the same DMA descriptor-ring model (SDMA) with identical ownership semantics.
+        The ~400-line STM32 transport becomes a ~300-line SDMA equivalent that uses less code and 93% less buffer SRAM (0.8 KB vs 12.2 KB, because oracle frames are only 88 bytes).
+        The SCPU's 5.4x faster clock and internal backplane eliminate PHY startup delay and improve throughput.
+        See the <a class="doc-link" href="transport-parity-analysis.md">transport parity analysis</a> for details.
+      </p>
+    </div>
+
+    <div class="resource-bars">
+      <div class="resource-bar-item">
+        <label>
+          STM32 Prototype SRAM (Hackathon - debug build, unoptimized)
+          <span>88 KB / 128 KB</span>
+        </label>
+        <div class="bar-track">
+          <div class="bar-fill used" style="width: 69%;" data-width="69">88 KB (includes oversized raft log, debug printf, etc.)</div>
+          <span class="bar-label-free">40 KB free</span>
+        </div>
+      </div>
+
+      <div class="resource-bar-item">
+        <label>
+          STM32 Prototype SRAM (Production estimate, optimized)
+          <span>25&ndash;30 KB / 128 KB</span>
+        </label>
+        <div class="bar-track">
+          <div class="bar-fill oracle" style="width: 22%;" data-width="22">~28 KB</div>
+          <span class="bar-label-free">~100 KB free (78%)</span>
+        </div>
+      </div>
+
+      <div class="resource-bar-item">
+        <label>
+          SCPU Core SRAM - Oracle Delta on Production Service Processor
+          <span>~13.5 KB oracle added to ~40 KB SDK baseline / 126 KB per core</span>
+        </label>
+        <div class="bar-track">
+          <div class="bar-fill used" style="width: 31.7%;" data-width="31.7">SDK baseline (~40 KB)</div>
+          <div class="bar-fill oracle" style="width: 10.7%;" data-width="10.7">Oracle (~13.5 KB)</div>
+          <span class="bar-label-free">~72 KB free (57%)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-grid" style="margin-top: 2.5rem;">
+      <div class="card">
+        <div class="card-icon green">&#10003;</div>
+        <h3>SRAM savings: 29 KB &rarr; 1 KB</h3>
+        <p>Right-sizing the Raft log from 1,500 to 32 entries saves 29 KB of heap (32 covers worst-case burst for a 4-box deployment). Transport buffers drop from 12 KB to under 1 KB because oracle frames are 88 bytes, not the full 1500-byte MTU.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon green">&#10003;</div>
+        <h3>Code savings: 12 KB &rarr; ~8 KB</h3>
+        <p>Compiler size optimization, stripping printf (4.8 KB) and debug asserts. The oracle delta shrinks from 12 KB to ~8 KB of code.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon green">&#10003;</div>
+        <h3>3 more CM3 cores available</h3>
+        <p>The switch SoC has 4 Cortex-M3 SCPU cores. The oracle needs only one. Three cores remain for additional services - notably, switch configuration services when the host CPU has failed.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ DOCS ═══════ -->
+<section id="docs">
+  <div class="fade-in">
+    <div class="section-header">
+      <div class="section-tag">Technical Documentation</div>
+      <h2>Deep-dive references</h2>
+      <p>The presentation above is a high-level summary. Full technical detail lives in the project documentation.</p>
+    </div>
+    <div class="card-grid">
+      <div class="card">
+        <h3>Design Document (v0.5)</h3>
+        <p>Full architecture specification: wire protocol, Raft integration, health monitoring, fencing taxonomy, timing parameters.</p>
+        <p style="margin-top:0.75rem"><a class="doc-link" href="design.md">docs/design.md</a></p>
+      </div>
+      <div class="card">
+        <h3>Memory Footprint Analysis</h3>
+        <p>Per-module code and SRAM breakdown, production optimization estimates, SCPU delta analysis.</p>
+        <p style="margin-top:0.75rem"><a class="doc-link" href="memory-footprint-analysis.md">docs/memory-footprint-analysis.md</a></p>
+      </div>
+      <div class="card">
+        <h3>Transport Parity Analysis</h3>
+        <p>Side-by-side comparison of STM32 ETH DMA vs. production SCPU SDMA: descriptor formats, buffer management, FreeRTOS config, RX/TX paths, SRAM costs, and API mapping from vendor SDK source.</p>
+        <p style="margin-top:0.75rem"><a class="doc-link" href="transport-parity-analysis.md">docs/transport-parity-analysis.md</a></p>
+      </div>
+      <div class="card">
+        <h3>Architecture Diagrams</h3>
+        <p>System architecture, firmware internals, failure detection flow, wire protocol, demo topology.</p>
+        <p style="margin-top:0.75rem"><a class="doc-link" href="diagrams/">docs/diagrams/</a></p>
+      </div>
+      <div class="card">
+        <h3>Quickstart Guide</h3>
+        <p>Build, flash, and run instructions for both the POSIX simulator and STM32 hardware.</p>
+        <p style="margin-top:0.75rem"><a class="doc-link" href="QUICKSTART.md">docs/QUICKSTART.md</a></p>
+      </div>
+    </div>
+
+    <div class="section-header" style="margin-top: 3rem; margin-bottom: 1.5rem;">
+      <div class="section-tag">Source Code</div>
+      <h2 style="font-size: 1.5rem;">Repositories</h2>
+    </div>
+    <div class="card-grid">
+      <div class="card">
+        <h3>raft-l2-oracle</h3>
+        <p>Hackathon project: STM32 firmware, POSIX simulator, wire protocol, build system, documentation.</p>
+        <p style="margin-top:0.75rem"><a class="doc-link" href="https://github.com/kyosaku-kai/raft-l2-oracle">kyosaku-kai/raft-l2-oracle</a></p>
+      </div>
+      <div class="card">
+        <h3>timblaktu/raft</h3>
+        <p>Forked from willemt/raft. Added Nix builds, fixed memory leaks, bare-metal compile options. Vendored as submodule.</p>
+        <p style="margin-top:0.75rem"><a class="doc-link" href="https://github.com/timblaktu/raft">timblaktu/raft</a> (fork of <a class="doc-link" href="https://github.com/willemt/raft">willemt/raft</a>)</p>
+      </div>
+      <div class="card">
+        <h3>willemt/raft</h3>
+        <p>Original upstream: C implementation of Raft consensus. ~2,200 lines, callback-driven, zero dependencies. The foundation this project builds on.</p>
+        <p style="margin-top:0.75rem"><a class="doc-link" href="https://github.com/willemt/raft">willemt/raft</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>L2 Failure Detection Oracle - Hackathon 2026</p>
+  <p style="margin-top:0.5rem">
+    <a href="https://github.com/kyosaku-kai/raft-l2-oracle">github.com/kyosaku-kai/raft-l2-oracle</a>
+  </p>
+</footer>
+
+<script>
+// ── Scroll-triggered fade-in ──
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.15 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// ── Active nav link ──
+const sections = document.querySelectorAll('section');
+const navLinks = document.querySelectorAll('nav .nav-links a');
+
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(section => {
+    if (window.scrollY >= section.offsetTop - 200) {
+      current = section.id;
+    }
+  });
+  navLinks.forEach(link => {
+    link.classList.toggle('active', link.getAttribute('href') === '#' + current);
+  });
+});
+
+// ── Smooth scroll ──
+navLinks.forEach(link => {
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    const target = document.querySelector(link.getAttribute('href'));
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+</script>
+
+</body>
+</html>

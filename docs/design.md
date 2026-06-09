@@ -903,9 +903,9 @@ typedef struct {
 ```
 
 Implementations:
-- `transport_eth.c` — STM32 ETH peripheral + FreeRTOS queues (production)
-- `transport_sim.c` — POSIX UDP loopback (development/testing)
-- Future: `transport_soc.c` — production SoC service processor transport via vendor SDK
+- `transport_eth.c` — STM32 ETH peripheral + FreeRTOS (hackathon prototype, 417 lines)
+- `transport_sim.c` — POSIX UDP loopback (development/testing, 209 lines)
+- Future: `transport_soc.c` — production SCPU SDMA transport (~300 lines estimated). Same DMA descriptor-ring pattern as STM32 but higher-level vendor SDK API, polling RX instead of ISR, and 93% less buffer SRAM (128B aligned buffers vs 1524B).
 
 ---
 
@@ -1467,6 +1467,72 @@ graph TD
 
 ---
 
+## 15. Future Improvement: Dynamic L2 Peer Discovery
+
+**Status:** Proposed — replaces static compile-time peer table with broadcast-based discovery.
+
+### 15.1 Problem
+
+The current implementation hardcodes cluster membership in `node_config.h`: each node's MAC address and `node_id` are compiled into every firmware binary via `oracle_cluster_peers[]`, and per-board identity is set with `-DNODE_ID=N -DBOX_ID=M`. This means:
+
+- Each board requires a uniquely configured firmware binary
+- Adding or replacing a board requires recompilation of all nodes
+- The chassis initialization system (which flashes the service processor) must track per-slot identity
+- Configuration complexity undermines reliability in a safety-critical failure detector
+
+### 15.2 Goal
+
+**One universal firmware binary that runs on any service processor, on any switch, in any chassis slot.** Nodes discover each other dynamically at L2 after power-on, with zero per-board configuration.
+
+### 15.3 Proposed Mechanism: L2 Broadcast Announce Protocol
+
+#### Identity from Hardware
+
+Every STM32 has a factory-programmed **96-bit unique device ID** at ROM address `0x1FFF7A10` (F2xx) / `0x1FFF7A10` (F4xx). This ID is unique per chip, requires no provisioning, and is readable at runtime. For the production service processor, an equivalent hardware identifier (CPU serial, OTP fuse, or factory MAC) would serve the same role.
+
+- **MAC derivation:** `02:CA:FE:<uid[0]>:<uid[1]>:<uid[2]>` — locally administered, derived from hardware UID. Collision probability is negligible within a 3–5 node cluster.
+- **node_id derivation:** Deterministic function of the full UID (e.g., hash mod 256, with full UID as tiebreaker for collisions).
+
+#### Discovery Protocol (Two Phases)
+
+**Phase 1 — Discovery (pre-Raft, runs at boot)**
+
+1. Node reads its hardware UID, derives MAC and `node_id`
+2. Configures Ethernet MAC with derived address
+3. Broadcasts `MSG_NODE_ANNOUNCE` (already defined as msg type `0x21`, EtherType `0x88B5`) periodically (e.g., every 200ms) to `FF:FF:FF:FF:FF:FF`
+4. Listens for `MSG_NODE_ANNOUNCE` from other nodes
+5. Populates a runtime peer table (`oracle_peer_t peers[MAX_CLUSTER]`) from received announces
+6. Once `CLUSTER_SIZE - 1` unique peers are discovered, transitions to Phase 2
+
+**Phase 2 — Raft (normal operation)**
+
+- Raft elections and log replication proceed as today, using unicast to discovered peer MACs
+- `peer_mac_for()` searches the runtime table instead of the static `oracle_cluster_peers[]`
+- Periodic announces continue at a reduced rate (e.g., every 5s) for:
+  - Late joiners / replaced boards
+  - Liveness confirmation independent of Raft heartbeats
+
+#### What Remains Compile-Time
+
+`CLUSTER_SIZE` (e.g., 3) is the only remaining compile-time constant — it defines quorum requirements. This is a topology constant, identical across all binaries, not a per-board identity. An alternative timeout-based approach ("start Raft with whoever I've seen after T seconds") is possible but less deterministic for a safety-critical system.
+
+### 15.4 Implementation Impact
+
+| Component | Change |
+|-----------|--------|
+| `node_config.h` | Remove static `oracle_cluster_peers[]`; add runtime `discovered_peers[]` array |
+| `transport_eth.c` | `peer_mac_for()` searches runtime table; `eth_transport_create()` derives MAC from UID |
+| New: `discovery.c` | Discovery task: announce TX loop, announce RX handler, peer table management |
+| `raft_oracle.c` | Wait for discovery complete before calling `raft_init()` / adding nodes |
+| `wire_format.h` | No changes — `MSG_NODE_ANNOUNCE` and `MSG_NODE_ANNOUNCE_ACK` already defined |
+| CMake | Remove `-DNODE_ID` / `-DBOX_ID` requirements |
+
+### 15.5 Production Considerations
+
+The STM32 prototype uses the chip's 96-bit unique ID. The production service processor will need an equivalent hardware identifier (OTP fuse, serial register, or FRU data). The discovery protocol is agnostic to the source - it only requires that each node can derive a unique, stable identity at boot without external configuration.
+
+---
+
 ## Appendix A — Why Not Other Approaches
 
 | Approach | Why Rejected |
@@ -1480,18 +1546,13 @@ graph TD
 
 ## Appendix B — Relationship to Production Service Processors
 
-| Aspect | Hackathon PoC | Production SoC |
-|---|---|---|
-| Service processor | STM32 Nucleo (external) | Cortex-M3 (embedded in switching ASIC) |
-| Switch fabric | GbE managed switch | ASIC switching pipeline |
-| L2 transport | Raw Ethernet via RJ45 | Management frame inject/extract via vendor SDK |
-| Host communication | Same L2 segment via switch | Internal bus (mailbox + shared memory) |
-| Firmware access | Open (ST HAL + FreeRTOS) | Requires vendor licensing |
-| Raft implementation | willemt/raft (C, vendored) | Same, or Zig port |
+The detailed comparison between the STM32 prototype and production SCPU - including RTOS configuration, DMA descriptor model, buffer SRAM analysis, timer APIs, and transport line counts - is maintained in the n3x-infrathon project documentation alongside the transport parity analysis and memory footprint analysis.
 
-**What transfers directly:** Raft FSM, health monitoring logic, wire protocol format, timing parameters, FreeRTOS task structure.
+**What transfers directly:** Raft FSM, health monitoring logic, wire protocol format, timing parameters, FreeRTOS task structure, FreeRTOS primitives (semaphores, mutexes, tasks, queues), interrupt priority configuration. The production SCPU runs the same RTOS with the same DMA descriptor-ring pattern.
 
-**What requires new transport implementation:** MAC send/recv (STM32 ETH -> vendor SDK inject/extract), host IPC (AF_PACKET -> internal mailbox).
+**What requires new transport implementation:** Transport layer (~400 lines on STM32 → ~300 lines on SCPU). The SCPU transport is structurally simpler - polling replaces ISR-driven RX, the vendor SDK manages descriptor chains, and no GPIO/RMII/PHY init is needed. Transport buffer SRAM drops from 12.2 KB to ~0.7 KB because buffers can be sized to the 88-byte oracle frame rather than 1,524-byte max Ethernet frame.
+
+**What requires adaptation:** Host IPC (AF_PACKET → vendor IPC + doorbell IRQ).
 
 ---
 
